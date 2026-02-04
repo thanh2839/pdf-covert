@@ -25,3 +25,4 @@ npm-debug.log*
 # Temp files
 *.tmp
 temp/
+libreoffice/
