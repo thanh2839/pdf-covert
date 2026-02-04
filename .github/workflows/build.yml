@@ -2,10 +2,9 @@ name: Build App
 
 on:
   push:
-    branches:
-      - master
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -15,6 +14,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
+      
+      - name: Download LibreOffice Portable
+        run: |
+          curl -L -o LibreOfficePortable.exe "https://download.documentfoundation.org/libreoffice/portable/24.8/LibreOfficePortable_24.8.4_MultilingualStandard.paf.exe"
+          7z x LibreOfficePortable.exe -olibreoffice -y
+        shell: bash
+      
       - run: npm install
       - run: npm run build:win
       - uses: actions/upload-artifact@v4
@@ -29,6 +36,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
+      
+      - name: Install LibreOffice
+        run: |
+          brew install --cask libreoffice
+          mkdir -p libreoffice
+          cp -R /Applications/LibreOffice.app libreoffice/
+      
       - run: npm install
       - run: npm run build:mac
       - uses: actions/upload-artifact@v4
@@ -43,6 +58,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
+      
+      - name: Install LibreOffice
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice
+          mkdir -p libreoffice/program
+          cp -R /usr/lib/libreoffice/* libreoffice/
+      
       - run: npm install
       - run: npm run build:linux
       - uses: actions/upload-artifact@v4
