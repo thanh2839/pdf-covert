@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.amazonaws.com https://mentacare-uploads-dev.s3.ap-southeast-1.amazonaws.com data:">
   <title>Tạo tài liệu mới - PDF Converter</title>
   <style>
     * {
@@ -669,8 +669,8 @@
       <!-- Status Bar -->
       <div id="statusBar" class="status-bar"></div>
 
-      <!-- Document Type -->
-      <div class="section">
+      <!-- Document Type - Hidden -->
+      <div class="section" style="display: none;">
         <div class="section-title">📋 Loại tài liệu</div>
         <div class="form-group">
           <select id="documentTypeSelect">
@@ -952,7 +952,6 @@
     
     // Render uploaded documents
     function renderUploadedDocuments() {
-      console.log('Rendering uploaded documents:', uploadedDocuments);
       if (uploadedDocuments.length === 0) {
         uploadedSection.style.display = 'none';
         return;
@@ -960,38 +959,26 @@
       
       uploadedSection.style.display = 'block';
       uploadedFilesList.innerHTML = uploadedDocuments.map((doc, docIndex) => {
-        console.log(`Rendering document ${docIndex}:`, {
-          document_id: doc.document_id,
-          name: doc.name,
-          thumbnail_list: doc.thumbnail_list,
-          thumbnail_count: doc.thumbnail_list?.length || 0
-        });
         const filesHtml = doc.files.map((file, fileIndex) => {
           const isPdf = file.file_name.toLowerCase().endsWith('.pdf');
           return `<span class="uploaded-file-tag ${isPdf ? 'pdf' : ''}">${file.file_name}</span>`;
         }).join('');
         
-        // Render thumbnails (using public S3 URL from s3_key, like CMS)
+        // Render thumbnails (using presigned URL or public S3 URL)
         let thumbnailsHtml = '';
         if (doc.thumbnail_list && doc.thumbnail_list.length > 0) {
           thumbnailsHtml = `
             <div class="uploaded-thumbnails">
               ${doc.thumbnail_list.map((thumbnail, idx) => {
-                // Use public S3 URL from s3_key (like DocumentsManagement.tsx)
-                const thumbnailUrl = thumbnail.s3_key ? getThumbnailPublicUrl(thumbnail.s3_key) : '';
-                console.log(`Rendering thumbnail ${idx}:`, {
-                  file_name: thumbnail.file_name,
-                  s3_key: thumbnail.s3_key,
-                  url: thumbnailUrl
-                });
+                // Prefer presigned_url, fallback to public S3 URL from s3_key
+                const thumbnailUrl = thumbnail.presigned_url || (thumbnail.s3_key ? getThumbnailPublicUrl(thumbnail.s3_key) : '');
                 return `
                   <div class="uploaded-thumbnail" title="${thumbnail.file_name}">
                     ${thumbnailUrl ? `
-                      <img src="${thumbnailUrl}" alt="${thumbnail.file_name}" 
-                           onerror="console.error('Failed to load thumbnail:', '${thumbnailUrl}'); this.parentElement.innerHTML='<div class=\\'uploaded-thumbnail-placeholder\\'>${thumbnail.file_name}<br><small>Error loading</small></div>'"
-                           onload="console.log('Thumbnail loaded successfully:', '${thumbnailUrl}')">
+                      <img src="${thumbnailUrl}" alt="${thumbnail.file_name}"
+                           onerror="this.parentElement.innerHTML='<div class=\\'uploaded-thumbnail-placeholder\\'>${thumbnail.file_name}</div>'">
                     ` : `
-                      <div class="uploaded-thumbnail-placeholder">${thumbnail.file_name}<br><small>No s3_key</small></div>
+                      <div class="uploaded-thumbnail-placeholder">${thumbnail.file_name}</div>
                     `}
                   </div>
                 `;
@@ -1047,12 +1034,42 @@
     // Make openLocalFolderFromButton available globally
     window.openLocalFolderFromButton = openLocalFolderFromButton;
     
+    // Refresh presigned URLs for thumbnails (they expire after some time)
+    async function refreshThumbnailUrls(docs) {
+      for (const doc of docs) {
+        if (doc.thumbnail_list && doc.thumbnail_list.length > 0) {
+          for (let i = 0; i < doc.thumbnail_list.length; i++) {
+            const thumbnail = doc.thumbnail_list[i];
+            // Refresh presigned URL
+            try {
+              const urlResult = await window.electronAPI.getDocumentThumbnailUrl(
+                token,
+                doc.document_id,
+                thumbnail.file_name
+              );
+              if (urlResult.success && urlResult.data && urlResult.data.presigned_url) {
+                doc.thumbnail_list[i].presigned_url = urlResult.data.presigned_url;
+              }
+            } catch (error) {
+              console.error(`Error refreshing presigned URL for ${thumbnail.file_name}:`, error);
+            }
+          }
+        }
+      }
+    }
+
     // Load uploaded documents from sessionStorage on page load
     const savedUploaded = sessionStorage.getItem('uploadedDocuments');
     if (savedUploaded) {
       try {
         uploadedDocuments = JSON.parse(savedUploaded);
+        // Render first with potentially expired URLs
         renderUploadedDocuments();
+        // Then refresh URLs in background and re-render
+        refreshThumbnailUrls(uploadedDocuments).then(() => {
+          sessionStorage.setItem('uploadedDocuments', JSON.stringify(uploadedDocuments));
+          renderUploadedDocuments();
+        });
       } catch (e) {
         console.error('Error loading uploaded documents from session:', e);
       }
@@ -1308,11 +1325,7 @@
         return;
       }
 
-      const selectedTypeId = documentTypeSelect.value;
-      if (!selectedTypeId) {
-        setStatus('error', 'Vui lòng chọn loại tài liệu');
-        return;
-      }
+      const selectedTypeId = documentTypeSelect.value || undefined; // Không bắt buộc chọn loại tài liệu
 
       // Check for duplicates within selection (not allowed)
       if (duplicateFiles.length > 0) {
@@ -1487,71 +1500,50 @@
                 }
               }
 
-              // Get document from API to get thumbnail_list from database (similar to CMS fetchData after upload)
-              // This ensures we get the correct s3_key format that matches what CMS uses
-              let documentFromApi = null;
+              // Get thumbnail presigned URLs from API (more reliable than constructing public URLs)
               let thumbnailList = [];
-              
-              // Wait a moment for database to update after upload (similar to CMS reload after upload)
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              
-              // Try to get document from API with retry (database might need a moment to update)
-              for (let retry = 0; retry < 5; retry++) {
-                try {
-                  if (retry > 0) {
-                    // Wait a bit before retrying (increasing delay)
-                    await new Promise(resolve => setTimeout(resolve, 1000 * retry));
-                  }
-                  const docResult = await window.electronAPI.getDocumentById(token, uploadResult.data.documentId);
-                  if (docResult.success && docResult.data) {
-                    // API returns { document: {...} } or just the document object
-                    documentFromApi = docResult.data.document || docResult.data;
-                    console.log(`[Retry ${retry + 1}] Document from API:`, documentFromApi);
-                    console.log(`[Retry ${retry + 1}] Thumbnail list from API:`, documentFromApi?.thumbnail_list);
-                    
-                    if (documentFromApi && documentFromApi.thumbnail_list && documentFromApi.thumbnail_list.length > 0) {
-                      // Use thumbnail_list from database (has correct s3_key format)
-                      thumbnailList = documentFromApi.thumbnail_list;
-                      console.log('✅ Using thumbnail_list from database:', thumbnailList);
-                      break; // Success, exit retry loop
-                    } else {
-                      console.log(`[Retry ${retry + 1}] Thumbnail list not yet available in database, retrying...`);
+
+              // Wait for database to update after upload
+              await new Promise(resolve => setTimeout(resolve, 2000));
+
+              // Get presigned URLs for each thumbnail
+              if (thumbnailNames.length > 0) {
+                for (const thumbnailName of thumbnailNames) {
+                  try {
+                    const urlResult = await window.electronAPI.getDocumentThumbnailUrl(
+                      token,
+                      uploadResult.data.documentId,
+                      thumbnailName
+                    );
+                    if (urlResult.success && urlResult.data && urlResult.data.presigned_url) {
+                      thumbnailList.push({
+                        file_name: thumbnailName,
+                        presigned_url: urlResult.data.presigned_url
+                      });
                     }
+                  } catch (error) {
+                    console.error(`Error getting presigned URL for thumbnail ${thumbnailName}:`, error);
                   }
-                } catch (error) {
-                  console.error(`Error getting document from API (retry ${retry + 1}):`, error);
                 }
               }
 
-              // Fallback: construct from thumbnailS3Keys if we didn't get it from API
-              if (thumbnailList.length === 0 && uploadResult.data.thumbnailS3Keys && thumbnailNames.length > 0) {
-                console.log('⚠️ Using fallback: thumbnailS3Keys from upload response:', uploadResult.data.thumbnailS3Keys);
-                thumbnailList = thumbnailNames.map(tn => {
-                  const s3Key = uploadResult.data.thumbnailS3Keys[tn] || `mentacare/thumbnails/${uploadResult.data.documentId}-${tn}`;
-                  console.log(`Thumbnail ${tn}: s3_key = ${s3Key}`);
-                  return {
-                    file_name: tn,
-                    s3_key: s3Key
-                  };
-                });
-              } else if (thumbnailList.length === 0 && thumbnailNames.length > 0) {
-                // Last resort: construct s3_key from known format
-                console.warn('⚠️ No thumbnailS3Keys in response, constructing from known format');
-                thumbnailList = thumbnailNames.map(tn => {
-                  // Format: mentacare/thumbnails/{documentId}-{hash}.png
-                  // Since we don't have the hash, we'll use the filename as fallback
-                  const s3Key = `mentacare/thumbnails/${uploadResult.data.documentId}-${tn.replace(/[^a-zA-Z0-9]/g, '_')}`;
-                  return {
-                    file_name: tn,
-                    s3_key: s3Key
-                  };
-                });
+              // Fallback: if no presigned URLs, try to get from document API
+              if (thumbnailList.length === 0 && thumbnailNames.length > 0) {
+                try {
+                  const docResult = await window.electronAPI.getDocumentById(token, uploadResult.data.documentId);
+                  if (docResult.success && docResult.data) {
+                    const doc = docResult.data.document || docResult.data;
+                    if (doc && doc.thumbnail_list && doc.thumbnail_list.length > 0) {
+                      thumbnailList = doc.thumbnail_list;
+                    }
+                  }
+                } catch (error) {
+                  console.error('Error getting document from API:', error);
+                }
               }
-              
-              console.log('Final thumbnailList:', thumbnailList);
 
               // Add to uploaded documents list
-              const uploadedDoc = {
+              uploadedDocuments.push({
                 document_id: uploadResult.data.documentId,
                 name: file.name.replace(/\.[^/.]+$/, ''),
                 files: fileNames.map(fn => ({
@@ -1562,9 +1554,7 @@
                 status: 'uploaded',
                 localPath: localPath,
                 isOverwrite: file.existingDocId && overwriteCheckbox.checked
-              };
-              console.log('Adding uploaded document:', uploadedDoc);
-              uploadedDocuments.push(uploadedDoc);
+              });
               
               // Immediately render to see thumbnails
               renderUploadedDocuments();

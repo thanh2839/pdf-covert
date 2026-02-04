@@ -35,33 +35,36 @@ async function postRequest(data) {
 /**
  * Upload file to S3 using presigned URL
  * Similar to CMS uploadToS3 function in mentacare-documents.ts
+ *
+ * IMPORTANT: S3 presigned URLs don't support Transfer-Encoding: chunked
+ * So we must read the entire file into a buffer and send with Content-Length
  */
 async function uploadToS3(presignedUrl, filePath) {
-  const fileStream = fs.createReadStream(filePath)
-  const fileName = require('path').basename(filePath)
-  
   try {
-    // CMS sets Content-Type: 'application/octet-stream' to match presigned URL
-    // This must match the Content-Type in the presigned URL query string
-    const response = await axios.put(presignedUrl, fileStream, {
+    // Read entire file into buffer (required for S3 presigned URL upload)
+    // S3 doesn't support chunked transfer encoding with presigned URLs
+    const fileBuffer = fs.readFileSync(filePath)
+    const fileSize = fileBuffer.length
+
+    // Upload using axios with buffer (not stream)
+    const response = await axios.put(presignedUrl, fileBuffer, {
       headers: {
-        'Content-Type': 'application/octet-stream' // Must match presigned URL
+        'Content-Type': 'application/octet-stream', // Must match presigned URL
+        'Content-Length': fileSize // Explicit content length to avoid chunked encoding
       },
       maxContentLength: Infinity,
       maxBodyLength: Infinity,
       timeout: 300000, // 5 minutes for large files
-      // Don't let axios transform the request
-      transformRequest: [(data) => data], // Pass stream as-is
       validateStatus: function (status) {
         // S3 returns 200 on success
         return status >= 200 && status < 300
       }
     })
-    
+
     if (response.status !== 200) {
       throw new Error(`Failed to upload file to S3: ${response.status} ${response.statusText}`)
     }
-    
+
     return { success: true }
   } catch (error) {
     if (error.response) {
