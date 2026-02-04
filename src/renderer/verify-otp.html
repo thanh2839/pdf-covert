@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+  <title>Xác thực OTP - PDF Converter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .header h1 {
+      font-size: 28px;
+      color: #2d3748;
+      margin-bottom: 8px;
+    }
+    
+    .header p {
+      color: #718096;
+      font-size: 14px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #4a5568;
+      margin-bottom: 8px;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 18px;
+      text-align: center;
+      letter-spacing: 8px;
+      transition: border-color 0.2s;
+    }
+    
+    .form-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .error-message {
+      color: #e53e3e;
+      font-size: 14px;
+      margin-top: 8px;
+      display: none;
+      text-align: center;
+    }
+    
+    .error-message.show {
+      display: block;
+    }
+    
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 10px;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .btn-secondary {
+      background: #e2e8f0;
+      color: #4a5568;
+      margin-top: 10px;
+    }
+    
+    .btn-secondary:hover {
+      background: #cbd5e0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔐 Xác thực OTP</h1>
+      <p>Nhập mã OTP đã được gửi đến email/số điện thoại của bạn</p>
+    </div>
+    
+    <form id="otpForm">
+      <div class="form-group">
+        <label for="otp">Mã OTP (6 chữ số)</label>
+        <input type="text" id="otp" name="otp" maxlength="6" required autocomplete="off" pattern="[0-9]{6}">
+        <div class="error-message" id="otpError"></div>
+      </div>
+      
+      <div class="error-message" id="generalError"></div>
+      
+      <button type="submit" class="btn btn-primary" id="submitBtn">
+        Xác thực
+      </button>
+      
+      <button type="button" class="btn btn-secondary" id="backBtn">
+        Quay lại đăng nhập
+      </button>
+    </form>
+  </div>
+
+  <script>
+    // Get userId from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const userId = urlParams.get('userId');
+    
+    if (!userId) {
+      window.location.href = 'signin.html';
+    }
+    
+    const otpForm = document.getElementById('otpForm');
+    const otpInput = document.getElementById('otp');
+    const submitBtn = document.getElementById('submitBtn');
+    const backBtn = document.getElementById('backBtn');
+    const generalError = document.getElementById('generalError');
+    
+    // Only allow digits
+    otpInput.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '');
+    });
+    
+    otpForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const otp = otpInput.value.trim();
+      
+      // Clear errors
+      generalError.classList.remove('show');
+      generalError.textContent = '';
+      
+      if (otp.length !== 6) {
+        generalError.textContent = 'Mã OTP phải có 6 chữ số';
+        generalError.classList.add('show');
+        return;
+      }
+      
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Đang xử lý...';
+      
+      try {
+        const result = await window.electronAPI.authVerifyOtp(userId, otp);
+        
+        if (result.success && result.data?.jwt_token) {
+          // Store token
+          localStorage.setItem('token', result.data.jwt_token);
+          localStorage.setItem('userId', result.data.user_id || userId);
+          
+          // Navigate to documents list page
+          window.location.href = 'documents-list.html';
+        } else {
+          throw new Error(result.error || 'Xác thực OTP thất bại');
+        }
+      } catch (error) {
+        generalError.textContent = error.message || 'Xác thực OTP thất bại. Vui lòng thử lại.';
+        generalError.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Xác thực';
+      }
+    });
+    
+    backBtn.addEventListener('click', () => {
+      window.location.href = 'signin.html';
+    });
+  </script>
+</body>
+</html>

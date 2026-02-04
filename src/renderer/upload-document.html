@@ -1,0 +1,1630 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+  <title>Tạo tài liệu mới - PDF Converter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+      color: white;
+      padding: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .header h1 {
+      font-size: 24px;
+    }
+    
+    .header .user-info {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    
+    .logout-btn {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    
+    .logout-btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.2);
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.2);
+    }
+    
+    .content {
+      padding: 24px;
+    }
+    
+    .section {
+      margin-bottom: 24px;
+    }
+    
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    .form-group label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      color: #4a5568;
+      margin-bottom: 8px;
+    }
+    
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .checkbox-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+    }
+    
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .checkbox-item input[type="checkbox"] {
+      width: auto;
+    }
+    
+    .drop-zone {
+      border: 3px dashed #cbd5e0;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      background: #f7fafc;
+    }
+    
+    .drop-zone:hover {
+      border-color: #667eea;
+      background: #eef2ff;
+    }
+    
+    .drop-zone.drag-over {
+      border-color: #667eea;
+      background: #eef2ff;
+      transform: scale(1.02);
+    }
+    
+    .file-list {
+      margin-top: 20px;
+    }
+    
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #f7fafc;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    
+    .file-item-info {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .file-item-name {
+      font-size: 14px;
+      color: #2d3748;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .file-item-status {
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+    
+    .file-item-status.pending {
+      background: #e2e8f0;
+      color: #4a5568;
+    }
+    
+    .file-item-status.processing {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    
+    .file-item-status.done {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    
+    .file-item-status.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .file-item-status.skipped {
+      background: #e5e7eb;
+      color: #6b7280;
+    }
+    
+    .btn {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 24px;
+    }
+    
+    .status-bar {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+    
+    .status-bar.show {
+      display: block;
+    }
+    
+    .status-bar.success {
+      background: #c6f6d5;
+      color: #276749;
+    }
+    
+    .status-bar.error {
+      background: #fed7d7;
+      color: #c53030;
+    }
+    
+    .status-bar.info {
+      background: #bee3f8;
+      color: #2b6cb0;
+    }
+    
+    .progress-container {
+      margin-top: 20px;
+      display: none;
+    }
+    
+    .progress-container.show {
+      display: block;
+    }
+    
+    .progress-bar {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      width: 0%;
+      transition: width 0.3s;
+    }
+    
+    .clear-btn {
+      background: none;
+      border: none;
+      color: #e53e3e;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px 8px;
+    }
+    
+    .clear-btn:hover {
+      color: #c53030;
+    }
+    
+    .uploaded-document-card {
+      background: #f0fdf4;
+      border: 2px solid #86efac;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    
+    .uploaded-document-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+    
+    .uploaded-document-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: #166534;
+      flex: 1;
+    }
+    
+    .uploaded-document-id {
+      font-size: 12px;
+      color: #4b5563;
+      margin-top: 4px;
+    }
+    
+    .uploaded-document-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    
+    .uploaded-file-tag {
+      background: white;
+      border: 1px solid #86efac;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: #166534;
+    }
+    
+    .uploaded-file-tag.pdf {
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #991b1b;
+    }
+    
+    .local-path-info {
+      margin-top: 8px;
+      padding: 8px;
+      background: #e0f2fe;
+      border: 1px solid #7dd3fc;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #0c4a6e;
+    }
+    
+    .local-path-text {
+      word-break: break-all;
+      margin-bottom: 6px;
+    }
+    
+    .open-folder-btn {
+      background: #0ea5e9;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .open-folder-btn:hover {
+      background: #0284c7;
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 600px;
+      width: 90%;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 16px;
+    }
+
+    .duplicate-item {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .duplicate-item-header {
+      font-weight: 600;
+      color: #92400e;
+      margin-bottom: 8px;
+    }
+
+    .duplicate-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 4px 0;
+      padding: 8px;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .duplicate-option:hover {
+      background: #fef9c3;
+    }
+
+    .duplicate-option input[type="radio"] {
+      width: 16px;
+      height: 16px;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+
+    .btn-cancel {
+      background: #e2e8f0;
+      color: #4a5568;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .btn-confirm {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .file-item-path {
+      font-size: 11px;
+      color: #718096;
+      margin-top: 4px;
+    }
+
+    .file-item-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 8px;
+    }
+
+    .badge-pdf {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .badge-duplicate {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .badge-overwrite {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .badge-duplicate-error {
+      background: #fee2e2;
+      color: #991b1b;
+      font-weight: 600;
+    }
+
+    .file-item.duplicate-error {
+      background: #fef2f2;
+      border: 2px solid #fca5a5;
+    }
+
+    .edit-name-btn {
+      background: #f59e0b;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-left: 8px;
+      transition: all 0.2s;
+    }
+
+    .edit-name-btn:hover {
+      background: #d97706;
+    }
+
+    .inline-edit-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .inline-edit-input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 2px solid #667eea;
+      border-radius: 4px;
+      font-size: 13px;
+      outline: none;
+    }
+
+    .inline-edit-input:focus {
+      border-color: #764ba2;
+    }
+
+    .save-name-btn {
+      background: #10b981;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .save-name-btn:hover {
+      background: #059669;
+    }
+
+    .cancel-edit-btn {
+      background: #6b7280;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .cancel-edit-btn:hover {
+      background: #4b5563;
+    }
+
+    .file-item-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .uploaded-thumbnails {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .uploaded-thumbnail {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      border: 2px solid #86efac;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .uploaded-thumbnail:hover {
+      border-color: #4ade80;
+      transform: scale(1.05);
+    }
+
+    .uploaded-thumbnail img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .uploaded-thumbnail-placeholder {
+      width: 100%;
+      height: 100%;
+      background: #e0f2fe;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0c4a6e;
+      font-size: 11px;
+      text-align: center;
+      padding: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📄 Tạo tài liệu mới</h1>
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <button class="btn btn-secondary" onclick="window.location.href='documents-list.html'" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 14px;">
+          ← Quay lại
+        </button>
+        <div class="user-info" id="userInfo"></div>
+        <button class="logout-btn" id="logoutBtn">Đăng xuất</button>
+      </div>
+    </div>
+    
+    <div class="content">
+      <!-- Status Bar -->
+      <div id="statusBar" class="status-bar"></div>
+
+      <!-- Document Type -->
+      <div class="section">
+        <div class="section-title">📋 Loại tài liệu</div>
+        <div class="form-group">
+          <select id="documentTypeSelect">
+            <option value="">-- Chọn loại tài liệu --</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Files -->
+      <div class="section">
+        <div class="section-title">📁 Chọn Files hoặc Folder</div>
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+          <div id="dropZone" class="drop-zone" style="flex: 1;">
+            <div style="font-size: 36px; margin-bottom: 12px;">📄</div>
+            <div style="color: #4a5568; font-size: 14px; margin-bottom: 8px;">
+              Kéo thả files hoặc click để chọn
+            </div>
+            <div style="color: #a0aec0; font-size: 11px;">
+              DOC, DOCX, XLS, XLSX, PPT, PPTX, PDF, Images
+            </div>
+          </div>
+          <div id="folderZone" class="drop-zone" style="flex: 1; cursor: pointer;">
+            <div style="font-size: 36px; margin-bottom: 12px;">📁</div>
+            <div style="color: #4a5568; font-size: 14px; margin-bottom: 8px;">
+              Click để chọn Folder
+            </div>
+            <div style="color: #a0aec0; font-size: 11px;">
+              Quét tất cả files trong folder và subfolders
+            </div>
+          </div>
+        </div>
+
+        <!-- Overwrite option -->
+        <div class="form-group" style="background: #fef3c7; padding: 12px; border-radius: 8px; border: 1px solid #f59e0b;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 0;">
+            <input type="checkbox" id="overwriteCheckbox" style="width: 18px; height: 18px;">
+            <span style="color: #92400e; font-weight: 600;">⚠️ Ghi đè file cũ nếu trùng tên</span>
+          </label>
+          <div style="color: #b45309; font-size: 12px; margin-top: 6px; margin-left: 26px;">
+            Nếu tích vào, các file có tên trùng với tài liệu đã có sẽ được cập nhật thay vì tạo mới.
+          </div>
+        </div>
+
+        <!-- Duplicate warning -->
+        <div id="duplicateWarning" class="status-bar error" style="display: none;">
+          <div style="font-weight: 600; margin-bottom: 8px;">⚠️ Phát hiện files trùng tên:</div>
+          <div id="duplicateList"></div>
+        </div>
+
+        <div id="fileList" class="file-list"></div>
+      </div>
+      
+      <!-- Progress -->
+      <div id="progressContainer" class="progress-container">
+        <div class="progress-bar">
+          <div id="progressBarFill" class="progress-bar-fill"></div>
+        </div>
+        <div id="progressText" style="text-align: center; margin-top: 8px; color: #4a5568; font-size: 14px;">
+          Đang xử lý...
+        </div>
+      </div>
+      
+      <!-- Buttons -->
+      <div class="btn-group">
+        <button id="btnUpload" class="btn btn-primary" style="flex: 1;">
+          🚀 Tạo tài liệu và Upload
+        </button>
+      </div>
+      
+      <!-- Uploaded Files in Current Session -->
+      <div class="section" id="uploadedSection" style="display: none;">
+        <div class="section-title">✅ Tài liệu đã upload thành công (Session hiện tại)</div>
+        <div id="uploadedFilesList" class="file-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Check authentication
+    const token = localStorage.getItem('token');
+    const userId = localStorage.getItem('userId');
+    
+    if (!token) {
+      window.location.href = 'signin.html';
+    }
+    
+    // State
+    let selectedFiles = [];
+    let uploadedDocuments = []; // Files đã upload thành công trong session
+    let documentTypes = []; // Available document types
+    let existingDocuments = []; // Documents from DB for duplicate check
+    let duplicateFiles = []; // Files that have duplicates within selection
+    let existingDuplicates = []; // Files that exist in DB
+    let editingFileIndex = null; // Currently editing file index
+
+    // S3 Configuration (should match config.js)
+    const S3_UPLOADS_BUCKET = 'mentacare-uploads-dev';
+    const AWS_REGION = 'ap-southeast-1';
+
+    // Utility function to construct public S3 URL from S3 key (similar to DocumentsManagement.tsx)
+    function getThumbnailPublicUrl(s3Key) {
+      if (!s3Key || !S3_UPLOADS_BUCKET) {
+        return '';
+      }
+      return `https://${S3_UPLOADS_BUCKET}.s3.${AWS_REGION}.amazonaws.com/${s3Key}`;
+    }
+
+    // DOM Elements
+    const userInfo = document.getElementById('userInfo');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const uploadedSection = document.getElementById('uploadedSection');
+    const uploadedFilesList = document.getElementById('uploadedFilesList');
+    const dropZone = document.getElementById('dropZone');
+    const folderZone = document.getElementById('folderZone');
+    const fileList = document.getElementById('fileList');
+    const statusBar = document.getElementById('statusBar');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBarFill = document.getElementById('progressBarFill');
+    const progressText = document.getElementById('progressText');
+    const btnUpload = document.getElementById('btnUpload');
+    const documentTypeSelect = document.getElementById('documentTypeSelect');
+    const overwriteCheckbox = document.getElementById('overwriteCheckbox');
+    const duplicateWarning = document.getElementById('duplicateWarning');
+    const duplicateList = document.getElementById('duplicateList');
+
+    // Load document types on page load
+    async function loadDocumentTypes() {
+      try {
+        const result = await window.electronAPI.getDocumentTypes(token);
+        if (result.success && result.data) {
+          // API returns { types: [...] } not { document_types: [...] }
+          documentTypes = result.data.types || result.data.document_types || [];
+          documentTypeSelect.innerHTML = '<option value="">-- Chọn loại tài liệu --</option>' +
+            documentTypes.map(type => `<option value="${type.type_id}">${type.name}</option>`).join('');
+          
+          if (documentTypes.length === 0) {
+            console.warn('No document types found');
+            documentTypeSelect.innerHTML = '<option value="">-- Không có loại tài liệu --</option>';
+          }
+        } else {
+          console.error('Failed to load document types:', result.error);
+          documentTypeSelect.innerHTML = '<option value="">-- Lỗi tải danh sách --</option>';
+        }
+      } catch (error) {
+        console.error('Failed to load document types:', error);
+        documentTypeSelect.innerHTML = '<option value="">-- Lỗi: ' + (error.message || 'Không thể tải') + ' --</option>';
+      }
+    }
+    loadDocumentTypes();
+
+    // Load existing documents for duplicate check
+    async function loadExistingDocuments() {
+      try {
+        const result = await window.electronAPI.getAllDocuments(token);
+        if (result.success && result.data && result.data.documents) {
+          existingDocuments = result.data.documents;
+          console.log(`Loaded ${existingDocuments.length} existing documents for duplicate check`);
+        }
+      } catch (error) {
+        console.error('Failed to load existing documents:', error);
+      }
+    }
+    loadExistingDocuments();
+
+    // Get the primary file name from a document (for duplicate checking)
+    function getDocumentPrimaryFileName(doc) {
+      if (!doc.files || doc.files.length === 0) return null;
+      // If document has both PDF and other files, return the non-PDF file name
+      const nonPdfFile = doc.files.find(f => !f.file_name.toLowerCase().endsWith('.pdf'));
+      if (nonPdfFile) return nonPdfFile.file_name;
+      // Otherwise return the PDF file name
+      return doc.files[0].file_name;
+    }
+
+    // Check for duplicates
+    function checkDuplicates() {
+      duplicateFiles = [];
+      existingDuplicates = [];
+
+      // Get file names without extension for comparison
+      const getBaseName = (fileName) => fileName.replace(/\.[^/.]+$/, '').toLowerCase();
+
+      // Check for duplicates within selected files
+      const nameMap = {};
+      selectedFiles.forEach((file, index) => {
+        const baseName = getBaseName(file.name);
+        if (nameMap[baseName]) {
+          nameMap[baseName].push(index);
+        } else {
+          nameMap[baseName] = [index];
+        }
+      });
+
+      // Mark duplicates within selection and set isDuplicateInSelection flag
+      selectedFiles.forEach(file => {
+        file.isDuplicateInSelection = false;
+      });
+
+      for (const [name, indices] of Object.entries(nameMap)) {
+        if (indices.length > 1) {
+          duplicateFiles.push({ baseName: name, indices });
+          // Mark all files in this duplicate group
+          indices.forEach(idx => {
+            selectedFiles[idx].isDuplicateInSelection = true;
+          });
+        }
+      }
+
+      // Check against existing documents in DB
+      selectedFiles.forEach((file, index) => {
+        const baseName = getBaseName(file.name);
+        const existingDoc = existingDocuments.find(doc => {
+          const docFileName = getDocumentPrimaryFileName(doc);
+          if (!docFileName) return false;
+          return getBaseName(docFileName) === baseName;
+        });
+        if (existingDoc) {
+          existingDuplicates.push({ fileIndex: index, existingDoc });
+          selectedFiles[index].existingDocId = existingDoc.document_id;
+          selectedFiles[index].existingDocName = existingDoc.name;
+        }
+      });
+
+      // Update UI
+      updateDuplicateWarning();
+    }
+
+    // Update duplicate warning UI
+    function updateDuplicateWarning() {
+      if (duplicateFiles.length === 0 && existingDuplicates.length === 0) {
+        duplicateWarning.style.display = 'none';
+        return;
+      }
+
+      duplicateWarning.style.display = 'block';
+      let html = '';
+
+      if (duplicateFiles.length > 0) {
+        html += '<div style="margin-bottom: 8px;"><strong>Trùng trong danh sách chọn:</strong></div>';
+        duplicateFiles.forEach(dup => {
+          const files = dup.indices.map(i => selectedFiles[i].name).join(', ');
+          html += `<div style="color: #991b1b; font-size: 12px;">• ${files}</div>`;
+        });
+        html += '<div style="margin-top: 8px; color: #b45309; font-size: 12px;">✏️ Nhấn "Đổi tên" bên cạnh file để sửa tên trước khi upload.</div>';
+      }
+
+      if (existingDuplicates.length > 0) {
+        html += '<div style="margin-top: 8px; margin-bottom: 8px;"><strong>Trùng với tài liệu đã có:</strong></div>';
+        existingDuplicates.forEach(dup => {
+          const file = selectedFiles[dup.fileIndex];
+          html += `<div style="color: #991b1b; font-size: 12px;">• ${file.name} → "${dup.existingDoc.name}" (ID: ${dup.existingDoc.document_id})</div>`;
+        });
+        if (!overwriteCheckbox.checked) {
+          html += '<div style="margin-top: 8px; color: #b45309; font-size: 12px;">⏭️ Các files này sẽ bị BỎ QUA khi upload. Tích "Ghi đè file cũ" để cập nhật.</div>';
+        }
+      }
+
+      duplicateList.innerHTML = html;
+    }
+
+    // Set user info
+    userInfo.textContent = `User ID: ${userId || 'N/A'}`;
+    
+    // Logout
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('userId');
+      window.location.href = 'signin.html';
+    });
+    
+    // Status bar helper
+    function setStatus(type, message) {
+      statusBar.className = 'status-bar ' + type + ' show';
+      statusBar.textContent = message;
+      setTimeout(() => {
+        statusBar.classList.remove('show');
+      }, 5000);
+    }
+    
+    // Render uploaded documents
+    function renderUploadedDocuments() {
+      console.log('Rendering uploaded documents:', uploadedDocuments);
+      if (uploadedDocuments.length === 0) {
+        uploadedSection.style.display = 'none';
+        return;
+      }
+      
+      uploadedSection.style.display = 'block';
+      uploadedFilesList.innerHTML = uploadedDocuments.map((doc, docIndex) => {
+        console.log(`Rendering document ${docIndex}:`, {
+          document_id: doc.document_id,
+          name: doc.name,
+          thumbnail_list: doc.thumbnail_list,
+          thumbnail_count: doc.thumbnail_list?.length || 0
+        });
+        const filesHtml = doc.files.map((file, fileIndex) => {
+          const isPdf = file.file_name.toLowerCase().endsWith('.pdf');
+          return `<span class="uploaded-file-tag ${isPdf ? 'pdf' : ''}">${file.file_name}</span>`;
+        }).join('');
+        
+        // Render thumbnails (using public S3 URL from s3_key, like CMS)
+        let thumbnailsHtml = '';
+        if (doc.thumbnail_list && doc.thumbnail_list.length > 0) {
+          thumbnailsHtml = `
+            <div class="uploaded-thumbnails">
+              ${doc.thumbnail_list.map((thumbnail, idx) => {
+                // Use public S3 URL from s3_key (like DocumentsManagement.tsx)
+                const thumbnailUrl = thumbnail.s3_key ? getThumbnailPublicUrl(thumbnail.s3_key) : '';
+                console.log(`Rendering thumbnail ${idx}:`, {
+                  file_name: thumbnail.file_name,
+                  s3_key: thumbnail.s3_key,
+                  url: thumbnailUrl
+                });
+                return `
+                  <div class="uploaded-thumbnail" title="${thumbnail.file_name}">
+                    ${thumbnailUrl ? `
+                      <img src="${thumbnailUrl}" alt="${thumbnail.file_name}" 
+                           onerror="console.error('Failed to load thumbnail:', '${thumbnailUrl}'); this.parentElement.innerHTML='<div class=\\'uploaded-thumbnail-placeholder\\'>${thumbnail.file_name}<br><small>Error loading</small></div>'"
+                           onload="console.log('Thumbnail loaded successfully:', '${thumbnailUrl}')">
+                    ` : `
+                      <div class="uploaded-thumbnail-placeholder">${thumbnail.file_name}<br><small>No s3_key</small></div>
+                    `}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          `;
+        }
+        
+        const localPathInfo = doc.localPath ? `
+          <div class="local-path-info">
+            <div style="font-weight: 600; margin-bottom: 4px;">📁 Đã lưu tại:</div>
+            <div class="local-path-text">${doc.localPath}</div>
+            <button class="open-folder-btn" data-path="${doc.localPath.replace(/"/g, '&quot;')}" onclick="openLocalFolderFromButton(this)">
+              📂 Mở thư mục
+            </button>
+          </div>
+        ` : '';
+        
+        return `
+          <div class="uploaded-document-card">
+            <div class="uploaded-document-header">
+              <div>
+                <div class="uploaded-document-name">${doc.name}</div>
+                <div class="uploaded-document-id">ID: ${doc.document_id}</div>
+              </div>
+              <span class="file-item-status done">Đã upload ✓</span>
+            </div>
+            <div class="uploaded-document-files">
+              ${filesHtml}
+            </div>
+            ${thumbnailsHtml}
+            ${localPathInfo}
+          </div>
+        `;
+      }).join('');
+    }
+    
+    // Open local folder from button
+    async function openLocalFolderFromButton(button) {
+      const filePath = button.getAttribute('data-path');
+      if (!filePath) return;
+      
+      try {
+        const result = await window.electronAPI.openFolder(filePath);
+        if (!result.success) {
+          alert('Không thể mở thư mục: ' + result.error);
+        }
+      } catch (error) {
+        alert('Lỗi: ' + error.message);
+      }
+    }
+    
+    // Make openLocalFolderFromButton available globally
+    window.openLocalFolderFromButton = openLocalFolderFromButton;
+    
+    // Load uploaded documents from sessionStorage on page load
+    const savedUploaded = sessionStorage.getItem('uploadedDocuments');
+    if (savedUploaded) {
+      try {
+        uploadedDocuments = JSON.parse(savedUploaded);
+        renderUploadedDocuments();
+      } catch (e) {
+        console.error('Error loading uploaded documents from session:', e);
+      }
+    }
+    
+    // Drop zone events
+    dropZone.addEventListener('click', async () => {
+      const files = await window.electronAPI.selectFiles();
+      if (files && files.length > 0) {
+        addFiles(files);
+      }
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+
+      const files = Array.from(e.dataTransfer.files).map(f => f.path);
+      addFiles(files);
+    });
+
+    // Folder zone events
+    folderZone.addEventListener('click', async () => {
+      const folderPath = await window.electronAPI.selectFolder();
+      if (folderPath) {
+        setStatus('info', 'Đang quét folder...');
+        const files = await window.electronAPI.scanFolder(folderPath);
+        if (files && files.length > 0) {
+          addFilesFromFolder(files);
+          setStatus('success', `Đã tìm thấy ${files.length} files trong folder`);
+        } else {
+          setStatus('error', 'Không tìm thấy file nào trong folder');
+        }
+      }
+    });
+
+    // Overwrite checkbox change event
+    overwriteCheckbox.addEventListener('change', () => {
+      updateDuplicateWarning();
+    });
+
+    // Add files to list (from file paths)
+    function addFiles(filePaths) {
+      for (const filePath of filePaths) {
+        if (!selectedFiles.find(f => f.path === filePath)) {
+          const fileName = filePath.split(/[\\/]/).pop();
+          const isPdf = fileName.toLowerCase().endsWith('.pdf');
+          selectedFiles.push({
+            path: filePath,
+            name: fileName,
+            status: 'pending',
+            pdfPath: isPdf ? filePath : null, // If already PDF, no need to convert
+            isPdf: isPdf,
+            thumbnailPaths: []
+          });
+        }
+      }
+      checkDuplicates();
+      renderFileList();
+    }
+
+    // Add files from folder scan
+    function addFilesFromFolder(files) {
+      for (const fileInfo of files) {
+        if (!selectedFiles.find(f => f.path === fileInfo.path)) {
+          const isPdf = fileInfo.name.toLowerCase().endsWith('.pdf');
+          selectedFiles.push({
+            path: fileInfo.path,
+            name: fileInfo.name,
+            relativePath: fileInfo.relativePath,
+            status: 'pending',
+            pdfPath: isPdf ? fileInfo.path : null,
+            isPdf: isPdf,
+            thumbnailPaths: []
+          });
+        }
+      }
+      checkDuplicates();
+      renderFileList();
+    }
+
+    // Remove file from list
+    function removeFile(index) {
+      selectedFiles.splice(index, 1);
+      checkDuplicates();
+      renderFileList();
+    }
+
+    // Render file list
+    function renderFileList() {
+      fileList.innerHTML = selectedFiles.map((file, index) => {
+        let badges = '';
+        let itemClass = 'file-item';
+        let editButton = '';
+
+        if (file.isPdf) {
+          badges += '<span class="file-item-badge badge-pdf">PDF</span>';
+        }
+
+        // Check if file is duplicate within selection
+        if (file.isDuplicateInSelection) {
+          badges += '<span class="file-item-badge badge-duplicate-error">Trùng tên ⚠️</span>';
+          itemClass += ' duplicate-error';
+          editButton = `<button class="edit-name-btn" onclick="startEditFileName(${index})">✏️ Đổi tên</button>`;
+        }
+
+        if (file.existingDocId) {
+          if (overwriteCheckbox.checked) {
+            badges += '<span class="file-item-badge badge-overwrite">Ghi đè</span>';
+          } else {
+            badges += '<span class="file-item-badge badge-duplicate">Trùng DB</span>';
+          }
+        }
+
+        const pathInfo = file.relativePath ? `<div class="file-item-path">${file.relativePath}</div>` : '';
+
+        // Check if this file is being edited
+        if (editingFileIndex === index) {
+          const ext = file.name.substring(file.name.lastIndexOf('.'));
+          const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.'));
+          return `
+            <div class="${itemClass}">
+              <div class="inline-edit-container">
+                <input type="text" class="inline-edit-input" id="editInput_${index}" value="${nameWithoutExt}" />
+                <span style="color: #718096;">${ext}</span>
+                <button class="save-name-btn" onclick="saveFileName(${index})">✓ Lưu</button>
+                <button class="cancel-edit-btn" onclick="cancelEditFileName()">✗ Hủy</button>
+              </div>
+              <button class="clear-btn" onclick="removeFile(${index})">×</button>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="${itemClass}">
+            <div class="file-item-info">
+              <div>
+                <span class="file-item-name" title="${file.path}">${file.name}</span>
+                ${badges}
+                ${editButton}
+                ${pathInfo}
+              </div>
+              <span class="file-item-status ${file.status}">${getStatusText(file.status)}</span>
+            </div>
+            <button class="clear-btn" onclick="removeFile(${index})">×</button>
+          </div>
+        `;
+      }).join('');
+
+      // Focus on edit input if editing
+      if (editingFileIndex !== null) {
+        const input = document.getElementById(`editInput_${editingFileIndex}`);
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+    }
+
+    // Start editing file name
+    function startEditFileName(index) {
+      editingFileIndex = index;
+      renderFileList();
+    }
+    window.startEditFileName = startEditFileName;
+
+    // Save edited file name
+    function saveFileName(index) {
+      const input = document.getElementById(`editInput_${index}`);
+      if (!input) return;
+
+      const newNameWithoutExt = input.value.trim();
+      if (!newNameWithoutExt) {
+        alert('Tên file không được để trống');
+        return;
+      }
+
+      const file = selectedFiles[index];
+      const ext = file.name.substring(file.name.lastIndexOf('.'));
+      const newFileName = newNameWithoutExt + ext;
+
+      // Check if new name already exists in the list (excluding current file)
+      const getBaseName = (fileName) => fileName.replace(/\.[^/.]+$/, '').toLowerCase();
+      const newBaseName = getBaseName(newFileName);
+      const existsInList = selectedFiles.some((f, i) => i !== index && getBaseName(f.name) === newBaseName);
+
+      if (existsInList) {
+        alert('Tên file này đã tồn tại trong danh sách. Vui lòng chọn tên khác.');
+        return;
+      }
+
+      // Update file name
+      file.name = newFileName;
+      file.originalName = file.originalName || file.name; // Keep original name for reference
+
+      editingFileIndex = null;
+      checkDuplicates();
+      renderFileList();
+      setStatus('success', `Đã đổi tên thành "${newFileName}"`);
+    }
+    window.saveFileName = saveFileName;
+
+    // Cancel editing
+    function cancelEditFileName() {
+      editingFileIndex = null;
+      renderFileList();
+    }
+    window.cancelEditFileName = cancelEditFileName;
+    
+    function getStatusText(status) {
+      const texts = {
+        'pending': 'Chờ xử lý',
+        'processing': 'Đang xử lý...',
+        'done': 'Hoàn thành ✓',
+        'error': 'Lỗi ✗',
+        'skipped': 'Bỏ qua ⏭️'
+      };
+      return texts[status] || status;
+    }
+    
+    // Update file status
+    function updateFileStatus(index, status) {
+      if (selectedFiles[index]) {
+        selectedFiles[index].status = status;
+        renderFileList();
+      }
+    }
+    
+    // Show/hide progress
+    function showProgress(show, percent = 0, text = '') {
+      if (show) {
+        progressContainer.classList.add('show');
+      } else {
+        progressContainer.classList.remove('show');
+      }
+      progressBarFill.style.width = percent + '%';
+      progressText.textContent = text;
+    }
+    
+    // Upload documents
+    btnUpload.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) {
+        setStatus('error', 'Vui lòng chọn ít nhất một file');
+        return;
+      }
+
+      const selectedTypeId = documentTypeSelect.value;
+      if (!selectedTypeId) {
+        setStatus('error', 'Vui lòng chọn loại tài liệu');
+        return;
+      }
+
+      // Check for duplicates within selection (not allowed)
+      if (duplicateFiles.length > 0) {
+        setStatus('error', 'Có files trùng tên trong danh sách. Vui lòng xóa bớt hoặc đổi tên.');
+        return;
+      }
+
+      // If there are existing duplicates and overwrite is not checked, they will be skipped
+      const filesToProcess = selectedFiles.filter(file => {
+        // Skip files that exist in DB when overwrite is not checked
+        if (file.existingDocId && !overwriteCheckbox.checked) {
+          return false;
+        }
+        return true;
+      });
+
+      if (filesToProcess.length === 0) {
+        setStatus('error', 'Tất cả files đều trùng với tài liệu đã có. Tích "Ghi đè file cũ" để cập nhật.');
+        return;
+      }
+
+      // Warn about skipped files
+      const skippedCount = selectedFiles.length - filesToProcess.length;
+      if (skippedCount > 0) {
+        console.log(`Skipping ${skippedCount} duplicate files`);
+      }
+
+      btnUpload.disabled = true;
+      const skippedMsg = skippedCount > 0 ? ` (bỏ qua ${skippedCount} file trùng)` : '';
+      setStatus('info', `🚀 Đang xử lý ${filesToProcess.length} files...${skippedMsg}`);
+      showProgress(true, 0, 'Bắt đầu xử lý...');
+
+      // Mark skipped files
+      selectedFiles.forEach((file, index) => {
+        if (file.existingDocId && !overwriteCheckbox.checked) {
+          file.status = 'skipped';
+        }
+      });
+      renderFileList();
+
+      try {
+        const totalFiles = filesToProcess.length;
+        let completed = 0;
+        let errors = 0;
+
+        // Process each file (convert to PDF if needed)
+        for (let i = 0; i < filesToProcess.length; i++) {
+          const file = filesToProcess[i];
+          const originalIndex = selectedFiles.indexOf(file);
+          updateFileStatus(originalIndex, 'processing');
+          showProgress(true, (i / totalFiles) * 50, `Đang xử lý ${file.name}...`);
+
+          try {
+            // If file is already PDF, skip conversion
+            if (file.isPdf) {
+              file.pdfPath = file.path;
+              console.log(`File ${file.name} is already PDF, skipping conversion`);
+            } else {
+              // Convert to PDF
+              const convertResult = await window.electronAPI.convertToPDF(file.path);
+              if (!convertResult.success) {
+                throw new Error(convertResult.error || 'Convert thất bại');
+              }
+              file.pdfPath = convertResult.pdfPath;
+            }
+
+            // Extract thumbnails from PDF (first 5 pages)
+            const thumbnailResult = await window.electronAPI.extractPdfThumbnail(file.pdfPath);
+            if (thumbnailResult.success && thumbnailResult.thumbnailPaths && thumbnailResult.thumbnailPaths.length > 0) {
+              file.thumbnailPaths = thumbnailResult.thumbnailPaths;
+            }
+
+            completed++;
+          } catch (error) {
+            console.error(`Error processing ${file.name}:`, error);
+            updateFileStatus(originalIndex, 'error');
+            errors++;
+            continue;
+          }
+        }
+
+        // Upload all documents
+        showProgress(true, 50, 'Đang upload tài liệu...');
+
+        const uploadResults = [];
+
+        for (let i = 0; i < filesToProcess.length; i++) {
+          const file = filesToProcess[i];
+          const originalIndex = selectedFiles.indexOf(file);
+          if (file.status === 'error') continue;
+
+          try {
+            showProgress(true, 50 + (i / filesToProcess.length) * 50, `Đang upload ${file.name}...`);
+
+            // Prepare file names and paths
+            const fileNames = [];
+            const filePaths = {};
+
+            // If original file is PDF, only add one PDF file
+            if (file.isPdf) {
+              fileNames.push(file.name);
+              filePaths[file.name] = file.path;
+            } else {
+              // Add original file
+              fileNames.push(file.name);
+              filePaths[file.name] = file.path;
+              // Add converted PDF
+              const pdfFileName = file.name.replace(/\.[^/.]+$/, '') + '.pdf';
+              fileNames.push(pdfFileName);
+              filePaths[pdfFileName] = file.pdfPath;
+            }
+
+            // Prepare thumbnails
+            const thumbnailNames = [];
+            const thumbnailPaths = {};
+            if (file.thumbnailPaths && file.thumbnailPaths.length > 0) {
+              file.thumbnailPaths.forEach((thumbPath, index) => {
+                const pageNum = index + 1;
+                const thumbnailFileName = file.name.replace(/\.[^/.]+$/, '') + `_thumb_${pageNum}.png`;
+                thumbnailNames.push(thumbnailFileName);
+                thumbnailPaths[thumbnailFileName] = thumbPath;
+              });
+            }
+
+            let uploadResult;
+
+            // Check if this file should overwrite an existing document
+            if (file.existingDocId && overwriteCheckbox.checked) {
+              // Update existing document
+              console.log(`Updating existing document ${file.existingDocId} with file ${file.name}`);
+              uploadResult = await window.electronAPI.updateDocument(token, file.existingDocId, {
+                name: file.name.replace(/\.[^/.]+$/, ''),
+                typeId: selectedTypeId,
+                keptFiles: [], // Don't keep any old files
+                newFileNames: fileNames,
+                filePaths: filePaths,
+                thumbnailNames: thumbnailNames.length > 0 ? thumbnailNames : undefined,
+                thumbnailPaths: thumbnailPaths
+              });
+
+              if (uploadResult.success) {
+                uploadResult.data = uploadResult.data || {};
+                uploadResult.data.documentId = file.existingDocId;
+              }
+            } else {
+              // Create new document
+              uploadResult = await window.electronAPI.uploadDocument(token, {
+                name: file.name.replace(/\.[^/.]+$/, ''),
+                fileNames: fileNames,
+                filePaths: filePaths,
+                typeId: selectedTypeId,
+                thumbnailNames: thumbnailNames.length > 0 ? thumbnailNames : undefined,
+                thumbnailPaths: thumbnailPaths
+              });
+            }
+
+            if (uploadResult.success) {
+              updateFileStatus(originalIndex, 'done');
+              uploadResults.push({ fileName: file.name, success: true });
+
+              // Save PDF to local directory
+              let localPath = null;
+              if (file.pdfPath) {
+                try {
+                  const localPdfFileName = file.isPdf ? file.name : (file.name.replace(/\.[^/.]+$/, '') + '.pdf');
+                  const saveResult = await window.electronAPI.saveFileToLocal(file.pdfPath, localPdfFileName);
+                  if (saveResult.success) {
+                    localPath = saveResult.localPath;
+                  }
+                } catch (error) {
+                  console.error('Error saving file to local:', error);
+                }
+              }
+
+              // Get document from API to get thumbnail_list from database (similar to CMS fetchData after upload)
+              // This ensures we get the correct s3_key format that matches what CMS uses
+              let documentFromApi = null;
+              let thumbnailList = [];
+              
+              // Wait a moment for database to update after upload (similar to CMS reload after upload)
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              
+              // Try to get document from API with retry (database might need a moment to update)
+              for (let retry = 0; retry < 5; retry++) {
+                try {
+                  if (retry > 0) {
+                    // Wait a bit before retrying (increasing delay)
+                    await new Promise(resolve => setTimeout(resolve, 1000 * retry));
+                  }
+                  const docResult = await window.electronAPI.getDocumentById(token, uploadResult.data.documentId);
+                  if (docResult.success && docResult.data) {
+                    // API returns { document: {...} } or just the document object
+                    documentFromApi = docResult.data.document || docResult.data;
+                    console.log(`[Retry ${retry + 1}] Document from API:`, documentFromApi);
+                    console.log(`[Retry ${retry + 1}] Thumbnail list from API:`, documentFromApi?.thumbnail_list);
+                    
+                    if (documentFromApi && documentFromApi.thumbnail_list && documentFromApi.thumbnail_list.length > 0) {
+                      // Use thumbnail_list from database (has correct s3_key format)
+                      thumbnailList = documentFromApi.thumbnail_list;
+                      console.log('✅ Using thumbnail_list from database:', thumbnailList);
+                      break; // Success, exit retry loop
+                    } else {
+                      console.log(`[Retry ${retry + 1}] Thumbnail list not yet available in database, retrying...`);
+                    }
+                  }
+                } catch (error) {
+                  console.error(`Error getting document from API (retry ${retry + 1}):`, error);
+                }
+              }
+
+              // Fallback: construct from thumbnailS3Keys if we didn't get it from API
+              if (thumbnailList.length === 0 && uploadResult.data.thumbnailS3Keys && thumbnailNames.length > 0) {
+                console.log('⚠️ Using fallback: thumbnailS3Keys from upload response:', uploadResult.data.thumbnailS3Keys);
+                thumbnailList = thumbnailNames.map(tn => {
+                  const s3Key = uploadResult.data.thumbnailS3Keys[tn] || `mentacare/thumbnails/${uploadResult.data.documentId}-${tn}`;
+                  console.log(`Thumbnail ${tn}: s3_key = ${s3Key}`);
+                  return {
+                    file_name: tn,
+                    s3_key: s3Key
+                  };
+                });
+              } else if (thumbnailList.length === 0 && thumbnailNames.length > 0) {
+                // Last resort: construct s3_key from known format
+                console.warn('⚠️ No thumbnailS3Keys in response, constructing from known format');
+                thumbnailList = thumbnailNames.map(tn => {
+                  // Format: mentacare/thumbnails/{documentId}-{hash}.png
+                  // Since we don't have the hash, we'll use the filename as fallback
+                  const s3Key = `mentacare/thumbnails/${uploadResult.data.documentId}-${tn.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                  return {
+                    file_name: tn,
+                    s3_key: s3Key
+                  };
+                });
+              }
+              
+              console.log('Final thumbnailList:', thumbnailList);
+
+              // Add to uploaded documents list
+              const uploadedDoc = {
+                document_id: uploadResult.data.documentId,
+                name: file.name.replace(/\.[^/.]+$/, ''),
+                files: fileNames.map(fn => ({
+                  file_name: fn,
+                  s3_key: `mentacare/${uploadResult.data.documentId}/${fn}`
+                })),
+                thumbnail_list: thumbnailList,
+                status: 'uploaded',
+                localPath: localPath,
+                isOverwrite: file.existingDocId && overwriteCheckbox.checked
+              };
+              console.log('Adding uploaded document:', uploadedDoc);
+              uploadedDocuments.push(uploadedDoc);
+              
+              // Immediately render to see thumbnails
+              renderUploadedDocuments();
+            } else {
+              throw new Error(uploadResult.error || 'Upload thất bại');
+            }
+          } catch (error) {
+            console.error(`Error uploading ${file.name}:`, error);
+            updateFileStatus(originalIndex, 'error');
+            uploadResults.push({ fileName: file.name, success: false, error: error.message });
+            errors++;
+          }
+        }
+
+        showProgress(true, 100, 'Hoàn thành!');
+
+        const newCount = uploadResults.filter(r => r.success && !selectedFiles.find(f => f.name === r.fileName)?.existingDocId).length;
+        const overwriteCount = uploadResults.filter(r => r.success && selectedFiles.find(f => f.name === r.fileName)?.existingDocId).length;
+
+        if (errors > 0) {
+          setStatus('error', `⚠️ Xử lý xong: ${completed - errors} thành công, ${errors} lỗi`);
+        } else {
+          let message = `✅ Upload thành công ${completed} tài liệu!`;
+          if (overwriteCount > 0) {
+            message += ` (${overwriteCount} ghi đè)`;
+          }
+          setStatus('success', message);
+        }
+
+        setTimeout(() => {
+          showProgress(false);
+          // Clear files after successful upload
+          if (errors === 0) {
+            selectedFiles = [];
+            duplicateFiles = [];
+            existingDuplicates = [];
+            duplicateWarning.style.display = 'none';
+            renderFileList();
+
+            // Reload existing documents for future duplicate checks
+            loadExistingDocuments();
+
+            // Save uploaded documents to sessionStorage
+            sessionStorage.setItem('uploadedDocuments', JSON.stringify(uploadedDocuments));
+
+            // Render uploaded documents
+            renderUploadedDocuments();
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('Upload error:', error);
+        setStatus('error', 'Lỗi: ' + error.message);
+        showProgress(false);
+      } finally {
+        btnUpload.disabled = false;
+      }
+    });
+    
+    // Initial render
+    renderFileList();
+  </script>
+</body>
+</html>

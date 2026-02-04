@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+  <title>PDF Converter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+      color: white;
+      padding: 24px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+    
+    .header p {
+      opacity: 0.8;
+      font-size: 14px;
+    }
+    
+    .content {
+      padding: 24px;
+    }
+    
+    .status-bar {
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    
+    .status-bar.success {
+      background: #c6f6d5;
+      color: #276749;
+    }
+    
+    .status-bar.error {
+      background: #fed7d7;
+      color: #c53030;
+    }
+    
+    .status-bar.info {
+      background: #bee3f8;
+      color: #2b6cb0;
+    }
+    
+    .status-bar.warning {
+      background: #fefcbf;
+      color: #975a16;
+    }
+    
+    .section {
+      margin-bottom: 24px;
+    }
+    
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #4a5568;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .input-group {
+      margin-bottom: 16px;
+    }
+    
+    .input-group label {
+      display: block;
+      font-size: 14px;
+      color: #4a5568;
+      margin-bottom: 6px;
+    }
+    
+    .input-group input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    
+    .input-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .drop-zone {
+      border: 3px dashed #cbd5e0;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s;
+      background: #f7fafc;
+    }
+    
+    .drop-zone:hover {
+      border-color: #667eea;
+      background: #eef2ff;
+    }
+    
+    .drop-zone.drag-over {
+      border-color: #667eea;
+      background: #eef2ff;
+      transform: scale(1.02);
+    }
+    
+    .drop-zone-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    .drop-zone-text {
+      color: #4a5568;
+      font-size: 16px;
+    }
+    
+    .drop-zone-hint {
+      color: #a0aec0;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    
+    .file-list {
+      margin-top: 20px;
+    }
+    
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #f7fafc;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    
+    .file-item-name {
+      font-size: 14px;
+      color: #2d3748;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .file-item-status {
+      font-size: 12px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      margin-left: 12px;
+    }
+    
+    .file-item-status.pending {
+      background: #e2e8f0;
+      color: #4a5568;
+    }
+    
+    .file-item-status.converting {
+      background: #fef3c7;
+      color: #92400e;
+    }
+    
+    .file-item-status.uploading {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    
+    .file-item-status.done {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    
+    .file-item-status.error {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    
+    .btn {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .btn-secondary {
+      background: #e2e8f0;
+      color: #4a5568;
+    }
+    
+    .btn-secondary:hover {
+      background: #cbd5e0;
+    }
+    
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    
+    .progress-container {
+      margin-top: 20px;
+      display: none;
+    }
+    
+    .progress-bar {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      width: 0%;
+      transition: width 0.3s;
+    }
+    
+    .progress-text {
+      font-size: 14px;
+      color: #4a5568;
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    .clear-btn {
+      background: none;
+      border: none;
+      color: #e53e3e;
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px 8px;
+      margin-left: 8px;
+    }
+    
+    .clear-btn:hover {
+      color: #c53030;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📄 PDF Converter</h1>
+      <p>Convert files to PDF & Upload to API</p>
+    </div>
+    
+    <div class="content">
+      <!-- Status Bar -->
+      <div id="statusBar" class="status-bar info">
+        Đang kiểm tra LibreOffice...
+      </div>
+      
+      <!-- API Settings -->
+      <div class="section">
+        <div class="section-title">⚙️ Cài đặt API</div>
+        <div class="input-group">
+          <label for="apiUrl">API Endpoint URL</label>
+          <input type="text" id="apiUrl" placeholder="https://your-api.com/upload">
+        </div>
+        <div class="input-group">
+          <label for="apiKey">API Key (Optional)</label>
+          <input type="password" id="apiKey" placeholder="Nhập API key nếu cần">
+        </div>
+      </div>
+      
+      <!-- Drop Zone -->
+      <div class="section">
+        <div class="section-title">📁 Chọn Files</div>
+        <div id="dropZone" class="drop-zone">
+          <div class="drop-zone-icon">📂</div>
+          <div class="drop-zone-text">Kéo thả files vào đây hoặc click để chọn</div>
+          <div class="drop-zone-hint">Hỗ trợ: DOC, DOCX, XLS, XLSX, PPT, PPTX, ODT, ODS, ODP, Images</div>
+        </div>
+        
+        <!-- File List -->
+        <div id="fileList" class="file-list"></div>
+      </div>
+      
+      <!-- Progress -->
+      <div id="progressContainer" class="progress-container">
+        <div class="progress-bar">
+          <div id="progressBarFill" class="progress-bar-fill"></div>
+        </div>
+        <div id="progressText" class="progress-text">Đang xử lý...</div>
+      </div>
+      
+      <!-- Buttons -->
+      <div class="btn-group">
+        <button id="btnConvertOnly" class="btn btn-secondary">
+          🔄 Chỉ Convert PDF
+        </button>
+        <button id="btnConvertAndUpload" class="btn btn-primary">
+          🚀 Convert & Upload
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let selectedFiles = [];
+    
+    // DOM Elements
+    const dropZone = document.getElementById('dropZone');
+    const fileList = document.getElementById('fileList');
+    const statusBar = document.getElementById('statusBar');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBarFill = document.getElementById('progressBarFill');
+    const progressText = document.getElementById('progressText');
+    const btnConvertOnly = document.getElementById('btnConvertOnly');
+    const btnConvertAndUpload = document.getElementById('btnConvertAndUpload');
+    const apiUrlInput = document.getElementById('apiUrl');
+    const apiKeyInput = document.getElementById('apiKey');
+    
+    // Check LibreOffice on startup
+    async function checkLibreOffice() {
+      try {
+        const exists = await window.electronAPI.checkLibreOffice();
+        if (exists) {
+          setStatus('success', '✅ LibreOffice đã sẵn sàng!');
+        } else {
+          setStatus('error', '❌ Không tìm thấy LibreOffice. Vui lòng cài đặt hoặc thêm portable version.');
+        }
+      } catch (error) {
+        setStatus('error', '❌ Lỗi kiểm tra LibreOffice: ' + error.message);
+      }
+    }
+    
+    // Status bar helper
+    function setStatus(type, message) {
+      statusBar.className = 'status-bar ' + type;
+      statusBar.textContent = message;
+    }
+    
+    // Drop zone events
+    dropZone.addEventListener('click', async () => {
+      const files = await window.electronAPI.selectFiles();
+      if (files && files.length > 0) {
+        addFiles(files);
+      }
+    });
+    
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+    
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+    
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      
+      const files = Array.from(e.dataTransfer.files).map(f => f.path);
+      addFiles(files);
+    });
+    
+    // Add files to list
+    function addFiles(filePaths) {
+      for (const filePath of filePaths) {
+        if (!selectedFiles.find(f => f.path === filePath)) {
+          selectedFiles.push({
+            path: filePath,
+            name: filePath.split(/[\\/]/).pop(),
+            status: 'pending'
+          });
+        }
+      }
+      renderFileList();
+    }
+    
+    // Remove file from list
+    function removeFile(index) {
+      selectedFiles.splice(index, 1);
+      renderFileList();
+    }
+    
+    // Render file list
+    function renderFileList() {
+      fileList.innerHTML = selectedFiles.map((file, index) => `
+        <div class="file-item">
+          <span class="file-item-name" title="${file.path}">${file.name}</span>
+          <span class="file-item-status ${file.status}">${getStatusText(file.status)}</span>
+          <button class="clear-btn" onclick="removeFile(${index})">×</button>
+        </div>
+      `).join('');
+      
+      // Enable/disable buttons
+      const hasFiles = selectedFiles.length > 0;
+      btnConvertOnly.disabled = !hasFiles;
+      btnConvertAndUpload.disabled = !hasFiles;
+    }
+    
+    function getStatusText(status) {
+      const texts = {
+        'pending': 'Chờ xử lý',
+        'converting': 'Đang convert...',
+        'uploading': 'Đang upload...',
+        'done': 'Hoàn thành ✓',
+        'error': 'Lỗi ✗'
+      };
+      return texts[status] || status;
+    }
+    
+    // Update file status
+    function updateFileStatus(index, status) {
+      if (selectedFiles[index]) {
+        selectedFiles[index].status = status;
+        renderFileList();
+      }
+    }
+    
+    // Show/hide progress
+    function showProgress(show, percent = 0, text = '') {
+      progressContainer.style.display = show ? 'block' : 'none';
+      progressBarFill.style.width = percent + '%';
+      progressText.textContent = text;
+    }
+    
+    // Convert only
+    btnConvertOnly.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) return;
+      
+      setStatus('info', '🔄 Đang convert...');
+      showProgress(true, 0, 'Bắt đầu convert...');
+      
+      let completed = 0;
+      let errors = 0;
+      
+      for (let i = 0; i < selectedFiles.length; i++) {
+        updateFileStatus(i, 'converting');
+        showProgress(true, (i / selectedFiles.length) * 100, `Converting ${selectedFiles[i].name}...`);
+        
+        const result = await window.electronAPI.convertToPDF(selectedFiles[i].path);
+        
+        if (result.success) {
+          updateFileStatus(i, 'done');
+          selectedFiles[i].pdfPath = result.pdfPath;
+          completed++;
+        } else {
+          updateFileStatus(i, 'error');
+          errors++;
+          console.error('Convert error:', result.error);
+        }
+      }
+      
+      showProgress(true, 100, 'Hoàn thành!');
+      
+      if (errors > 0) {
+        setStatus('warning', `⚠️ Convert xong: ${completed} thành công, ${errors} lỗi`);
+      } else {
+        setStatus('success', `✅ Convert thành công ${completed} files!`);
+      }
+      
+      setTimeout(() => showProgress(false), 2000);
+    });
+    
+    // Convert and Upload
+    btnConvertAndUpload.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) return;
+      
+      const apiUrl = apiUrlInput.value.trim();
+      if (!apiUrl) {
+        setStatus('error', '❌ Vui lòng nhập API URL!');
+        return;
+      }
+      
+      const apiKey = apiKeyInput.value.trim() || null;
+      
+      setStatus('info', '🚀 Đang xử lý...');
+      showProgress(true, 0, 'Bắt đầu xử lý...');
+      
+      let completed = 0;
+      let errors = 0;
+      
+      for (let i = 0; i < selectedFiles.length; i++) {
+        // Convert
+        updateFileStatus(i, 'converting');
+        showProgress(true, (i / selectedFiles.length) * 50, `Converting ${selectedFiles[i].name}...`);
+        
+        const convertResult = await window.electronAPI.convertToPDF(selectedFiles[i].path);
+        
+        if (!convertResult.success) {
+          updateFileStatus(i, 'error');
+          errors++;
+          continue;
+        }
+        
+        // Upload
+        updateFileStatus(i, 'uploading');
+        showProgress(true, 50 + (i / selectedFiles.length) * 50, `Uploading ${selectedFiles[i].name}...`);
+        
+        const uploadResult = await window.electronAPI.uploadPDF(convertResult.pdfPath, apiUrl, apiKey);
+        
+        if (uploadResult.success) {
+          updateFileStatus(i, 'done');
+          completed++;
+        } else {
+          updateFileStatus(i, 'error');
+          errors++;
+          console.error('Upload error:', uploadResult.error);
+        }
+      }
+      
+      showProgress(true, 100, 'Hoàn thành!');
+      
+      if (errors > 0) {
+        setStatus('warning', `⚠️ Xử lý xong: ${completed} thành công, ${errors} lỗi`);
+      } else {
+        setStatus('success', `✅ Convert & Upload thành công ${completed} files!`);
+      }
+      
+      setTimeout(() => showProgress(false), 2000);
+    });
+    
+    // Init
+    checkLibreOffice();
+    renderFileList();
+  </script>
+</body>
+</html>

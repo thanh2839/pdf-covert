@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-src 'self' https:;">
+  <title>Xem PDF - PDF Converter</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a1a;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+      color: white;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .header-info {
+      font-size: 14px;
+      opacity: 0.9;
+    }
+    
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+    }
+    
+    .btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    
+    .pdf-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #2d2d2d;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .pdf-viewer {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+    }
+    
+    .loading {
+      color: white;
+      font-size: 16px;
+      text-align: center;
+    }
+    
+    .error {
+      color: #fca5a5;
+      font-size: 16px;
+      text-align: center;
+      padding: 40px;
+    }
+    
+    .error-message {
+      margin-top: 16px;
+      font-size: 14px;
+      opacity: 0.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 id="documentTitle">Đang tải PDF...</h1>
+    <div class="header-info" id="headerInfo"></div>
+    <button class="btn" onclick="window.close()">Đóng</button>
+  </div>
+  
+  <div class="pdf-container" id="pdfContainer">
+    <div class="loading">Đang tải PDF...</div>
+  </div>
+
+  <script>
+    // Get parameters from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const documentId = urlParams.get('documentId');
+    const fileName = urlParams.get('fileName');
+    const documentName = urlParams.get('documentName') || fileName;
+    
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      window.location.href = 'signin.html';
+    }
+    
+    if (!documentId || !fileName) {
+      document.getElementById('pdfContainer').innerHTML = `
+        <div class="error">
+          <div>❌ Thiếu thông tin</div>
+          <div class="error-message">Không tìm thấy documentId hoặc fileName</div>
+        </div>
+      `;
+    } else {
+      // Set title
+      document.getElementById('documentTitle').textContent = documentName;
+      document.getElementById('headerInfo').textContent = fileName;
+      
+      // Load PDF
+      loadPDF();
+    }
+    
+    async function loadPDF() {
+      try {
+        const result = await window.electronAPI.getDocumentDownloadUrl(token, documentId, fileName);
+        
+        if (result.success && result.data?.presigned_url) {
+          const pdfUrl = result.data.presigned_url;
+          
+          // Create iframe to display PDF
+          const container = document.getElementById('pdfContainer');
+          container.innerHTML = `
+            <iframe 
+              class="pdf-viewer" 
+              src="${pdfUrl}" 
+              type="application/pdf"
+              onerror="handlePDFError()"
+            ></iframe>
+          `;
+        } else {
+          throw new Error(result.error || 'Không thể lấy URL PDF');
+        }
+      } catch (error) {
+        console.error('Error loading PDF:', error);
+        document.getElementById('pdfContainer').innerHTML = `
+          <div class="error">
+            <div>❌ Lỗi tải PDF</div>
+            <div class="error-message">${error.message || 'Không thể tải file PDF'}</div>
+            <button class="btn" onclick="loadPDF()" style="margin-top: 16px;">Thử lại</button>
+          </div>
+        `;
+      }
+    }
+    
+    function handlePDFError() {
+      document.getElementById('pdfContainer').innerHTML = `
+        <div class="error">
+          <div>❌ Không thể hiển thị PDF</div>
+          <div class="error-message">Trình duyệt không hỗ trợ xem PDF trực tiếp. Vui lòng tải file về để xem.</div>
+          <button class="btn" onclick="downloadPDF()" style="margin-top: 16px;">Tải về</button>
+        </div>
+      `;
+    }
+    
+    async function downloadPDF() {
+      try {
+        const result = await window.electronAPI.getDocumentDownloadUrl(token, documentId, fileName);
+        if (result.success && result.data?.presigned_url) {
+          // Open download URL in new window
+          window.open(result.data.presigned_url, '_blank');
+        }
+      } catch (error) {
+        alert('Lỗi tải file: ' + error.message);
+      }
+    }
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        window.close();
+      }
+    });
+  </script>
+</body>
+</html>
