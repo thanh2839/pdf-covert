@@ -12,6 +12,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-node@v4
         with:
           node-version: 18
@@ -23,14 +24,14 @@ jobs:
           mkdir -p libreoffice
           cp -R /Applications/LibreOffice.app libreoffice/
       
-      - run: npm ci
-      - run: npm run build:mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Thêm dòng này
+      - name: Install dependencies
+        run: npm ci
       
-      - uses: actions/upload-artifact@v4
+      - name: Build Mac app
+        run: npm run build:mac
+      
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: mac-installer
-          path: |
-            dist/*.zip
-            dist/*.dmg
+          path: dist/*.zip
