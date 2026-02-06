@@ -9,11 +9,12 @@ on:
 jobs:
   build-mac:
     runs-on: macos-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 18
           cache: 'npm'
       
       - name: Install LibreOffice
@@ -22,9 +23,14 @@ jobs:
           mkdir -p libreoffice
           cp -R /Applications/LibreOffice.app libreoffice/
       
-      - run: npm install
+      - run: npm ci
       - run: npm run build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Thêm dòng này
+      
       - uses: actions/upload-artifact@v4
         with:
           name: mac-installer
-          path: dist/*.dmg
+          path: |
+            dist/*.zip
+            dist/*.dmg
