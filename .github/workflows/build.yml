@@ -7,28 +7,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-      
-      - name: Download LibreOffice Portable
-        run: |
-          curl -L -o LibreOfficePortable.exe "https://download.documentfoundation.org/libreoffice/portable/24.8/LibreOfficePortable_24.8.4_MultilingualStandard.paf.exe"
-          7z x LibreOfficePortable.exe -olibreoffice -y
-        shell: bash
-      
-      - run: npm install
-      - run: npm run build:win
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-installer
-          path: dist/*.exe
-
   build-mac:
     runs-on: macos-latest
     steps:
@@ -50,28 +28,3 @@ jobs:
         with:
           name: mac-installer
           path: dist/*.dmg
-
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-      
-      - name: Install LibreOffice
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libreoffice
-          mkdir -p libreoffice/program
-          cp -R /usr/lib/libreoffice/* libreoffice/
-      
-      - run: npm install
-      - run: npm run build:linux
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-installer
-          path: |
-            dist/*.AppImage
-            dist/*.deb
