@@ -1379,23 +1379,28 @@
           showProgress(true, (i / totalFiles) * 50, `Đang xử lý ${file.name}...`);
 
           try {
-            // If file is already PDF, skip conversion
+            // Step 1: Convert to PDF first (if not already PDF)
             if (file.isPdf) {
               file.pdfPath = file.path;
               console.log(`File ${file.name} is already PDF, skipping conversion`);
             } else {
-              // Convert to PDF
+              // Convert to PDF using LibreOffice
               const convertResult = await window.electronAPI.convertToPDF(file.path);
               if (!convertResult.success) {
                 throw new Error(convertResult.error || 'Convert thất bại');
               }
               file.pdfPath = convertResult.pdfPath;
+              console.log(`Converted ${file.name} to PDF: ${file.pdfPath}`);
             }
 
-            // Extract thumbnails from PDF (first 5 pages)
-            const thumbnailResult = await window.electronAPI.extractPdfThumbnail(file.pdfPath);
+            // Step 2: Extract thumbnails from the converted PDF (first 5 pages)
+            // Using LibreOffice to export PNG from PDF
+            const thumbnailResult = await window.electronAPI.extractThumbnails(file.pdfPath);
             if (thumbnailResult.success && thumbnailResult.thumbnailPaths && thumbnailResult.thumbnailPaths.length > 0) {
               file.thumbnailPaths = thumbnailResult.thumbnailPaths;
+              console.log(`Extracted ${thumbnailResult.thumbnailPaths.length} thumbnails from PDF: ${file.pdfPath}`);
+            } else {
+              console.warn(`No thumbnails extracted from PDF: ${file.pdfPath}`);
             }
 
             completed++;

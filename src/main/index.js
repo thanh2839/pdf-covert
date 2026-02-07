@@ -1,10 +1,9 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const os = require('os');
-const { convertToPDF, getLibreOfficePath } = require('./converter');
+const { convertToPDF, getLibreOfficePath, extractThumbnailsFromFile } = require('./converter');
 const { uploadToAPI } = require('./api');
 const { authService, documentService, uploadToS3 } = require('../services/api');
-const { extractPdfThumbnail } = require('../services/pdf-thumbnail');
 const fs = require('fs');
 
 let mainWindow;
@@ -205,11 +204,11 @@ ipcMain.handle('get-document-sets', async (event, token) => {
   }
 });
 
-// Extract PDF thumbnail (returns array of up to 5 pages)
-ipcMain.handle('extract-pdf-thumbnail', async (event, pdfPath) => {
+// Extract thumbnails from file using LibreOffice (returns array of up to 5 pages)
+// This replaces the old PDF.js method - now exports directly from source file
+ipcMain.handle('extract-thumbnails', async (event, filePath) => {
   try {
-    const thumbnailPaths = await extractPdfThumbnail(pdfPath);
-    // If thumbnail extraction failed (returned null or empty array), it's not an error - just no thumbnails
+    const thumbnailPaths = await extractThumbnailsFromFile(filePath, null, 5);
     if (thumbnailPaths && Array.isArray(thumbnailPaths) && thumbnailPaths.length > 0) {
       return { success: true, thumbnailPaths };
     } else {
@@ -218,6 +217,22 @@ ipcMain.handle('extract-pdf-thumbnail', async (event, pdfPath) => {
     }
   } catch (error) {
     // If there's an actual error, still return success with empty array (thumbnails are optional)
+    console.error('Thumbnail extraction error (non-critical):', error.message);
+    return { success: true, thumbnailPaths: [] };
+  }
+});
+
+// Legacy handler for backward compatibility (deprecated - use extract-thumbnails instead)
+ipcMain.handle('extract-pdf-thumbnail', async (event, pdfPath) => {
+  try {
+    // Use new LibreOffice method instead of PDF.js
+    const thumbnailPaths = await extractThumbnailsFromFile(pdfPath, null, 5);
+    if (thumbnailPaths && Array.isArray(thumbnailPaths) && thumbnailPaths.length > 0) {
+      return { success: true, thumbnailPaths };
+    } else {
+      return { success: true, thumbnailPaths: [] };
+    }
+  } catch (error) {
     console.error('Thumbnail extraction error (non-critical):', error.message);
     return { success: true, thumbnailPaths: [] };
   }

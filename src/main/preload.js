@@ -45,7 +45,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Get document sets
   getDocumentSets: (token) => ipcRenderer.invoke('get-document-sets', token),
   
-  // Extract PDF thumbnail
+  // Extract thumbnails from file (using LibreOffice - replaces PDF.js method)
+  extractThumbnails: (filePath) => ipcRenderer.invoke('extract-thumbnails', filePath),
+  
+  // Extract PDF thumbnail (legacy - deprecated, use extractThumbnails instead)
   extractPdfThumbnail: (pdfPath) => ipcRenderer.invoke('extract-pdf-thumbnail', pdfPath),
   
   // Upload document
