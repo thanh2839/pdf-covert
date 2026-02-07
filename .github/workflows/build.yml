@@ -18,14 +18,14 @@ jobs:
           node-version: 18
           cache: 'npm'
       
-      - name: Install LibreOffice
-        run: |
-          brew install --cask libreoffice
-          mkdir -p libreoffice
-          cp -R /Applications/LibreOffice.app libreoffice/
+      # - name: Install LibreOffice
+      #   run: |
+      #     brew install --cask libreoffice
+      #     mkdir -p libreoffice
+      #     cp -R /Applications/LibreOffice.app libreoffice/
       
-      - name: Install dependencies
-        run: npm ci
+      # - name: Install dependencies
+      #   run: npm ci
       
       - name: Build Mac app
         run: npm run build:mac
