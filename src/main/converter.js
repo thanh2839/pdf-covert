@@ -154,9 +154,50 @@ async function convertMultipleToPDF(inputFiles, outputDir = null) {
 }
 
 /**
- * Export file thành PNG images (thumbnails) sử dụng LibreOffice
+ * Extract thumbnails từ file PDF sử dụng PyMuPDF (fitz) qua Python script
+ * Nhanh hơn và chất lượng tốt hơn LibreOffice cho file PDF
+ * @param {string} pdfFile - Đường dẫn file PDF
+ * @param {string} outputDir - Thư mục output
+ * @param {number} maxPages - Số trang tối đa (mặc định 5)
+ * @param {number} dpi - Độ phân giải (mặc định 300)
+ * @returns {Promise<string[]>} - Mảng đường dẫn các file PNG
+ */
+function extractThumbnailsFromPDF(pdfFile, outputDir, maxPages = 5, dpi = 300) {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(__dirname, '../scripts/extract_pdf_thumbnails.py');
+
+    const command = `python "${scriptPath}" "${pdfFile}" "${outputDir}" ${maxPages} ${dpi}`;
+
+    console.log('Extracting PDF thumbnails with PyMuPDF:', command);
+
+    exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error('PyMuPDF thumbnail error:', error);
+        console.error('stderr:', stderr);
+        return reject(new Error(`PyMuPDF thumbnail extraction failed: ${error.message}`));
+      }
+
+      try {
+        const result = JSON.parse(stdout.trim());
+        if (result.success && result.paths && result.paths.length > 0) {
+          console.log(`PyMuPDF extracted ${result.paths.length} thumbnails`);
+          resolve(result.paths);
+        } else {
+          reject(new Error(result.error || 'No thumbnails were created by PyMuPDF'));
+        }
+      } catch (parseError) {
+        console.error('Failed to parse PyMuPDF output:', stdout);
+        reject(new Error(`Failed to parse PyMuPDF output: ${parseError.message}`));
+      }
+    });
+  });
+}
+
+/**
+ * Export file thành PNG images (thumbnails)
+ * - File PDF: Sử dụng PyMuPDF (fitz) - nhanh hơn, chất lượng tốt hơn
+ * - File khác (Word, Excel, PPT...): Sử dụng LibreOffice
  * Export tối đa 5 trang đầu tiên
- * Thường được dùng để extract thumbnails từ PDF sau khi convert
  * @param {string} inputFile - Đường dẫn file cần export (PDF, Word, Excel, etc.)
  * @param {string} outputDir - (Optional) Thư mục output, mặc định là temp folder
  * @param {number} maxPages - Số trang tối đa cần export (mặc định 5)
@@ -178,7 +219,15 @@ function extractThumbnailsFromFile(inputFile, outputDir = null, maxPages = 5) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Lấy đường dẫn LibreOffice
+    // Nếu là file PDF → dùng PyMuPDF (fitz) cho nhanh và chất lượng tốt
+    const ext = path.extname(inputFile).toLowerCase();
+    if (ext === '.pdf') {
+      return extractThumbnailsFromPDF(inputFile, outputDir, maxPages)
+        .then(resolve)
+        .catch(reject);
+    }
+
+    // File khác (Word, Excel, PPT...) → dùng LibreOffice
     let soffice;
     try {
       soffice = getLibreOfficePath();
@@ -190,7 +239,7 @@ function extractThumbnailsFromFile(inputFile, outputDir = null, maxPages = 5) {
     // LibreOffice sẽ tự động export mỗi trang thành một file PNG
     const command = `"${soffice}" --headless --convert-to png --outdir "${outputDir}" "${inputFile}"`;
 
-    console.log('Exporting thumbnails with command:', command);
+    console.log('Exporting thumbnails with LibreOffice:', command);
 
     // Thực thi command
     exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
@@ -248,5 +297,6 @@ module.exports = {
   convertToPDF,
   convertMultipleToPDF,
   getLibreOfficePath,
-  extractThumbnailsFromFile
+  extractThumbnailsFromFile,
+  extractThumbnailsFromPDF
 };

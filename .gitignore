@@ -6,7 +6,7 @@ dist/
 out/
 
 # LibreOffice Portable (too large for git)
-# libreoffice/
+libreoffice/
 
 # OS files
 .DS_Store
@@ -25,4 +25,4 @@ npm-debug.log*
 # Temp files
 *.tmp
 temp/
-# libreoffice/
+libreoffice/

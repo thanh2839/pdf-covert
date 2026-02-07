@@ -1,6 +1,6 @@
 {
   "name": "pdf-converter-app",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "Convert files to PDF using LibreOffice",
   "main": "src/main/index.js",
   "scripts": {
