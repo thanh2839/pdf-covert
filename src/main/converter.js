@@ -154,48 +154,49 @@ async function convertMultipleToPDF(inputFiles, outputDir = null) {
 }
 
 /**
- * Extract thumbnails từ file PDF sử dụng PyMuPDF (fitz) qua Python script
- * Nhanh hơn và chất lượng tốt hơn LibreOffice cho file PDF
+ * Extract thumbnails từ file PDF sử dụng MuPDF.js (npm package)
+ * Được bundle cùng Electron build, không cần cài thêm gì
  * @param {string} pdfFile - Đường dẫn file PDF
  * @param {string} outputDir - Thư mục output
  * @param {number} maxPages - Số trang tối đa (mặc định 5)
  * @param {number} dpi - Độ phân giải (mặc định 300)
  * @returns {Promise<string[]>} - Mảng đường dẫn các file PNG
  */
-function extractThumbnailsFromPDF(pdfFile, outputDir, maxPages = 5, dpi = 300) {
-  return new Promise((resolve, reject) => {
-    const scriptPath = path.join(__dirname, '../scripts/extract_pdf_thumbnails.py');
+async function extractThumbnailsFromPDF(pdfFile, outputDir, maxPages = 5, dpi = 300) {
+  // mupdf là ESM module, cần dùng dynamic import
+  const mupdf = await import('mupdf');
 
-    const command = `python "${scriptPath}" "${pdfFile}" "${outputDir}" ${maxPages} ${dpi}`;
+  console.log(`Extracting PDF thumbnails with MuPDF.js: ${pdfFile}`);
 
-    console.log('Extracting PDF thumbnails with PyMuPDF:', command);
+  const fileBuffer = fs.readFileSync(pdfFile);
+  const doc = mupdf.Document.openDocument(fileBuffer, 'application/pdf');
 
-    exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error('PyMuPDF thumbnail error:', error);
-        console.error('stderr:', stderr);
-        return reject(new Error(`PyMuPDF thumbnail extraction failed: ${error.message}`));
-      }
+  const pageCount = Math.min(doc.countPages(), maxPages);
+  const scale = dpi / 72;
+  const matrix = mupdf.Matrix.scale(scale, scale);
+  const savedPaths = [];
 
-      try {
-        const result = JSON.parse(stdout.trim());
-        if (result.success && result.paths && result.paths.length > 0) {
-          console.log(`PyMuPDF extracted ${result.paths.length} thumbnails`);
-          resolve(result.paths);
-        } else {
-          reject(new Error(result.error || 'No thumbnails were created by PyMuPDF'));
-        }
-      } catch (parseError) {
-        console.error('Failed to parse PyMuPDF output:', stdout);
-        reject(new Error(`Failed to parse PyMuPDF output: ${parseError.message}`));
-      }
-    });
-  });
+  const basename = path.basename(pdfFile, path.extname(pdfFile));
+
+  for (let i = 0; i < pageCount; i++) {
+    const page = doc.loadPage(i);
+    const pixmap = page.toPixmap(matrix, mupdf.ColorSpace.DeviceRGB, false, true);
+    const pngBuffer = pixmap.asPNG();
+
+    const outputPath = path.join(outputDir, `${basename}_page_${i + 1}.png`);
+    fs.writeFileSync(outputPath, pngBuffer);
+    savedPaths.push(outputPath);
+
+    console.log(`Saved thumbnail: ${outputPath}`);
+  }
+
+  console.log(`MuPDF.js extracted ${savedPaths.length} thumbnails`);
+  return savedPaths;
 }
 
 /**
  * Export file thành PNG images (thumbnails)
- * - File PDF: Sử dụng PyMuPDF (fitz) - nhanh hơn, chất lượng tốt hơn
+ * - File PDF: Sử dụng MuPDF.js - nhanh hơn, chất lượng tốt hơn
  * - File khác (Word, Excel, PPT...): Sử dụng LibreOffice
  * Export tối đa 5 trang đầu tiên
  * @param {string} inputFile - Đường dẫn file cần export (PDF, Word, Excel, etc.)
@@ -219,7 +220,7 @@ function extractThumbnailsFromFile(inputFile, outputDir = null, maxPages = 5) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Nếu là file PDF → dùng PyMuPDF (fitz) cho nhanh và chất lượng tốt
+    // Nếu là file PDF → dùng MuPDF.js cho nhanh và chất lượng tốt
     const ext = path.extname(inputFile).toLowerCase();
     if (ext === '.pdf') {
       return extractThumbnailsFromPDF(inputFile, outputDir, maxPages)
