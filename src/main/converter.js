@@ -1,8 +1,28 @@
-const { exec } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { app } = require('electron');
+
+/**
+ * Kill zombie soffice processes + toàn bộ process tree
+ * Trên Windows khi exec timeout chỉ kill shell, soffice.bin vẫn sống
+ * → phải kill bằng wmic để dọn hết
+ */
+function killAllSoffice() {
+  if (process.platform === 'win32') {
+    // PowerShell kill đáng tin cậy hơn wmic/taskkill trên Windows
+    try {
+      execSync('powershell -Command "Get-Process soffice* -ErrorAction SilentlyContinue | Stop-Process -Force"', { stdio: 'ignore', timeout: 10000 });
+    } catch (e) {}
+    // Fallback: taskkill
+    try { execSync('taskkill /F /IM soffice.bin /T', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
+    try { execSync('taskkill /F /IM soffice.exe /T', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
+    try { execSync('taskkill /F /IM soffice.com /T', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
+  } else {
+    try { execSync('pkill -9 -f soffice', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
+  }
+}
 
 /**
  * Lấy đường dẫn tới LibreOffice
@@ -20,15 +40,13 @@ function getLibreOfficePath() {
   // Đường dẫn development
   const devPath = path.join(__dirname, '../../libreoffice');
 
-  // Windows
+  // Windows - dùng soffice.exe (exit ngay, soffice.bin chạy nền → poll chờ PDF)
   if (platform === 'win32') {
     const possiblePaths = [
-      // Bundled portable LibreOffice
       path.join(bundledPath, 'App/libreoffice/program/soffice.exe'),
       path.join(bundledPath, 'program/soffice.exe'),
       path.join(devPath, 'App/libreoffice/program/soffice.exe'),
       path.join(devPath, 'program/soffice.exe'),
-      // System installed
       'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
       'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
     ];
@@ -82,21 +100,17 @@ function getLibreOfficePath() {
  */
 function convertToPDF(inputFile, outputDir = null) {
   return new Promise((resolve, reject) => {
-    // Kiểm tra file input tồn tại
     if (!fs.existsSync(inputFile)) {
       return reject(new Error(`Input file not found: ${inputFile}`));
     }
 
-    // Tạo output directory
     if (!outputDir) {
       outputDir = path.join(os.tmpdir(), 'pdf-converter-output');
     }
-
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Lấy đường dẫn LibreOffice
     let soffice;
     try {
       soffice = getLibreOfficePath();
@@ -104,30 +118,93 @@ function convertToPDF(inputFile, outputDir = null) {
       return reject(error);
     }
 
-    // Tạo command
-    const command = `"${soffice}" --headless --convert-to pdf --outdir "${outputDir}" "${inputFile}"`;
+    // Kill zombie soffice + đợi thoát + xóa locks
+    killAllSoffice();
+    try { execSync('powershell -Command "Start-Sleep -Milliseconds 1500"', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
 
-    console.log('Converting with command:', command);
+    const inputBasename = path.basename(inputFile, path.extname(inputFile));
+    const pdfPath = path.join(outputDir, `${inputBasename}.pdf`);
 
-    // Thực thi command
-    exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Conversion error:', error);
-        console.error('stderr:', stderr);
-        return reject(new Error(`Conversion failed: ${error.message}`));
-      }
+    // Dọn file cũ + lock files
+    try { if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath); } catch (e) {}
+    try { fs.unlinkSync(path.join(outputDir, `.~lock.${inputBasename}.pdf#`)); } catch (e) {}
+    try { fs.unlinkSync(path.join(path.dirname(inputFile), `.~lock.${path.basename(inputFile)}#`)); } catch (e) {}
+    const sofficePath = path.dirname(soffice);
+    const profileLock = path.join(path.resolve(sofficePath, '../../../Data/settings'), '.lock');
+    try { if (fs.existsSync(profileLock)) fs.unlinkSync(profileLock); } catch (e) {}
 
-      // Tạo đường dẫn file PDF output
-      const inputBasename = path.basename(inputFile, path.extname(inputFile));
-      const pdfPath = path.join(outputDir, `${inputBasename}.pdf`);
+    const args = [
+      '--headless', '--norestore', '--nofirststartwizard', '--nologo',
+      '--convert-to', 'pdf',
+      '--outdir', outputDir,
+      inputFile
+    ];
+    console.log('Converting with command:', soffice, args.join(' '));
 
-      // Kiểm tra file PDF đã được tạo
-      if (fs.existsSync(pdfPath)) {
-        console.log('Conversion successful:', pdfPath);
-        resolve(pdfPath);
+    let settled = false;
+    const child = spawn(soffice, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
+    });
+
+    let stdoutData = '';
+    let stderrData = '';
+    child.stdout.on('data', (d) => { stdoutData += d.toString(); });
+    child.stderr.on('data', (d) => { stderrData += d.toString(); });
+
+    function finish(success, result) {
+      if (settled) return;
+      settled = true;
+      clearInterval(pollTimer);
+      clearTimeout(timeoutTimer);
+      if (stdoutData) console.log('LibreOffice stdout:', stdoutData.trim());
+      if (stderrData) console.error('LibreOffice stderr:', stderrData.trim());
+      if (success) {
+        console.log('Conversion successful:', result);
+        resolve(result);
       } else {
-        reject(new Error('PDF file was not created. Check LibreOffice installation.'));
+        // Chỉ kill khi thất bại - KHÔNG kill khi thành công (soffice.bin có thể đang dọn dẹp)
+        try { child.kill(); } catch (e) {}
+        killAllSoffice();
+        reject(new Error(result));
       }
+    }
+
+    // Poll PDF song song - soffice.exe exit ngay, soffice.bin chạy nền convert
+    // → poll là cách duy nhất để biết khi nào xong
+    const POLL_INTERVAL = 1000;
+    const pollTimer = setInterval(() => {
+      if (settled) return;
+      if (fs.existsSync(pdfPath)) {
+        try {
+          const size1 = fs.statSync(pdfPath).size;
+          if (size1 > 0) {
+            setTimeout(() => {
+              if (settled) return;
+              try {
+                const size2 = fs.statSync(pdfPath).size;
+                if (size2 > 0 && size1 === size2) {
+                  finish(true, pdfPath);
+                }
+              } catch (e) {}
+            }, 500);
+          }
+        } catch (e) {}
+      }
+    }, POLL_INTERVAL);
+
+    // Timeout tổng: 3 phút
+    const timeoutTimer = setTimeout(() => {
+      finish(false, 'Conversion timeout after 3 minutes');
+    }, 180000);
+
+    child.on('error', (err) => {
+      finish(false, `Failed to start LibreOffice: ${err.message}`);
+    });
+
+    // soffice.exe exit ngay → KHÔNG fail ở đây, để poll tiếp tục chờ PDF từ soffice.bin
+    child.on('close', (code) => {
+      console.log(`soffice.exe exited with code ${code}, soffice.bin converting in background...`);
     });
   });
 }
@@ -155,7 +232,6 @@ async function convertMultipleToPDF(inputFiles, outputDir = null) {
 
 /**
  * Extract thumbnails từ file PDF sử dụng MuPDF.js (npm package)
- * Được bundle cùng Electron build, không cần cài thêm gì
  * @param {string} pdfFile - Đường dẫn file PDF
  * @param {string} outputDir - Thư mục output
  * @param {number} maxPages - Số trang tối đa (mặc định 5)
@@ -196,102 +272,38 @@ async function extractThumbnailsFromPDF(pdfFile, outputDir, maxPages = 5, dpi = 
 
 /**
  * Export file thành PNG images (thumbnails)
- * - File PDF: Sử dụng MuPDF.js - nhanh hơn, chất lượng tốt hơn
- * - File khác (Word, Excel, PPT...): Sử dụng LibreOffice
- * Export tối đa 5 trang đầu tiên
+ * Luôn dùng MuPDF.js - nếu file không phải PDF thì convert sang PDF trước
  * @param {string} inputFile - Đường dẫn file cần export (PDF, Word, Excel, etc.)
  * @param {string} outputDir - (Optional) Thư mục output, mặc định là temp folder
  * @param {number} maxPages - Số trang tối đa cần export (mặc định 5)
  * @returns {Promise<string[]>} - Mảng đường dẫn các file PNG đã export (tối đa 5 trang)
  */
-function extractThumbnailsFromFile(inputFile, outputDir = null, maxPages = 5) {
-  return new Promise((resolve, reject) => {
-    // Kiểm tra file input tồn tại
-    if (!fs.existsSync(inputFile)) {
-      return reject(new Error(`Input file not found: ${inputFile}`));
-    }
+async function extractThumbnailsFromFile(inputFile, outputDir = null, maxPages = 5) {
+  // Kiểm tra file input tồn tại
+  if (!fs.existsSync(inputFile)) {
+    throw new Error(`Input file not found: ${inputFile}`);
+  }
 
-    // Tạo output directory
-    if (!outputDir) {
-      outputDir = path.join(os.tmpdir(), 'pdf-thumbnails');
-    }
+  // Tạo output directory
+  if (!outputDir) {
+    outputDir = path.join(os.tmpdir(), 'pdf-thumbnails');
+  }
 
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
 
-    // Nếu là file PDF → dùng MuPDF.js cho nhanh và chất lượng tốt
-    const ext = path.extname(inputFile).toLowerCase();
-    if (ext === '.pdf') {
-      return extractThumbnailsFromPDF(inputFile, outputDir, maxPages)
-        .then(resolve)
-        .catch(reject);
-    }
+  let pdfFile = inputFile;
+  const ext = path.extname(inputFile).toLowerCase();
 
-    // File khác (Word, Excel, PPT...) → dùng LibreOffice
-    let soffice;
-    try {
-      soffice = getLibreOfficePath();
-    } catch (error) {
-      return reject(error);
-    }
+  // File không phải PDF → convert sang PDF trước
+  if (ext !== '.pdf') {
+    console.log(`Converting ${inputFile} to PDF before extracting thumbnails...`);
+    pdfFile = await convertToPDF(inputFile);
+  }
 
-    // Tạo command để export PNG
-    // LibreOffice sẽ tự động export mỗi trang thành một file PNG
-    const command = `"${soffice}" --headless --convert-to png --outdir "${outputDir}" "${inputFile}"`;
-
-    console.log('Exporting thumbnails with LibreOffice:', command);
-
-    // Thực thi command
-    exec(command, { timeout: 60000 }, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Thumbnail export error:', error);
-        console.error('stderr:', stderr);
-        return reject(new Error(`Thumbnail export failed: ${error.message}`));
-      }
-
-      // LibreOffice tạo file PNG với format: {basename}_1.png, {basename}_2.png, ...
-      const inputBasename = path.basename(inputFile, path.extname(inputFile));
-      const thumbnailPaths = [];
-
-      // Tìm tất cả các file PNG đã được tạo
-      // LibreOffice có thể tạo: {basename}_1.png, {basename}_2.png, hoặc {basename}.png cho 1 trang
-      for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
-        // Thử format với số trang: {basename}_1.png
-        const thumbnailPath = path.join(outputDir, `${inputBasename}_${pageNum}.png`);
-        if (fs.existsSync(thumbnailPath)) {
-          thumbnailPaths.push(thumbnailPath);
-        } else if (pageNum === 1) {
-          // Nếu không có _1.png, thử {basename}.png (cho file 1 trang)
-          const singlePagePath = path.join(outputDir, `${inputBasename}.png`);
-          if (fs.existsSync(singlePagePath)) {
-            thumbnailPaths.push(singlePagePath);
-            break; // Chỉ có 1 trang
-          }
-        }
-      }
-
-      if (thumbnailPaths.length > 0) {
-        console.log(`Successfully exported ${thumbnailPaths.length} thumbnails`);
-        resolve(thumbnailPaths);
-      } else {
-        // Nếu không tìm thấy file theo pattern trên, tìm tất cả PNG trong thư mục
-        const files = fs.readdirSync(outputDir);
-        const pngFiles = files
-          .filter(file => file.startsWith(inputBasename) && file.endsWith('.png'))
-          .map(file => path.join(outputDir, file))
-          .sort()
-          .slice(0, maxPages);
-
-        if (pngFiles.length > 0) {
-          console.log(`Found ${pngFiles.length} PNG files by pattern matching`);
-          resolve(pngFiles);
-        } else {
-          reject(new Error('No PNG files were created. Check LibreOffice installation and file format support.'));
-        }
-      }
-    });
-  });
+  // Luôn dùng MuPDF để extract thumbnails từ PDF
+  return extractThumbnailsFromPDF(pdfFile, outputDir, maxPages);
 }
 
 module.exports = {

@@ -151,9 +151,10 @@
       cursor: pointer;
       transition: all 0.3s;
       background: #f7fafc;
+      position: relative;
     }
     
-    .drop-zone:hover {
+    .drop-zone:hover:not(.disabled) {
       border-color: #667eea;
       background: #eef2ff;
     }
@@ -162,6 +163,32 @@
       border-color: #667eea;
       background: #eef2ff;
       transform: scale(1.02);
+    }
+
+    .drop-zone.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .drop-zone.loading {
+      position: relative;
+    }
+
+    .drop-zone.loading::after {
+      content: '⏳ Đang tải danh sách documents...';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 255, 255, 0.95);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      color: #1e40af;
+      z-index: 10;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      white-space: nowrap;
     }
     
     .file-list {
@@ -734,9 +761,12 @@
       </div>
       
       <!-- Buttons -->
-      <div class="btn-group">
+      <div class="btn-group" style="display: flex; gap: 8px;">
         <button id="btnUpload" class="btn btn-primary" style="flex: 1;">
           🚀 Tạo tài liệu và Upload
+        </button>
+        <button id="btnExportErrors" class="btn" style="display: none; background: #ef4444; color: white; flex: 0 0 auto;">
+          📥 Export File Lỗi
         </button>
       </div>
       
@@ -791,6 +821,7 @@
     const progressBarFill = document.getElementById('progressBarFill');
     const progressText = document.getElementById('progressText');
     const btnUpload = document.getElementById('btnUpload');
+    const btnExportErrors = document.getElementById('btnExportErrors');
     const documentTypeSelect = document.getElementById('documentTypeSelect');
     const overwriteCheckbox = document.getElementById('overwriteCheckbox');
     const duplicateWarning = document.getElementById('duplicateWarning');
@@ -821,18 +852,51 @@
     }
     loadDocumentTypes();
 
+    // Track loading state
+    let isLoadingDocuments = true;
+
+    // Disable/enable file selection zones
+    function setFileSelectionEnabled(enabled) {
+      if (enabled) {
+        dropZone.classList.remove('disabled', 'loading');
+        folderZone.classList.remove('disabled', 'loading');
+        isLoadingDocuments = false;
+      } else {
+        dropZone.classList.add('disabled', 'loading');
+        folderZone.classList.add('disabled', 'loading');
+        isLoadingDocuments = true;
+      }
+    }
+
     // Load existing documents for duplicate check
     async function loadExistingDocuments() {
+      setFileSelectionEnabled(false);
+      setStatus('info', '⏳ Đang tải danh sách documents để kiểm tra trùng lặp...');
+      
       try {
         const result = await window.electronAPI.getAllDocuments(token);
         if (result.success && result.data && result.data.documents) {
           existingDocuments = result.data.documents;
           console.log(`Loaded ${existingDocuments.length} existing documents for duplicate check`);
+          setStatus('success', `✅ Đã tải ${existingDocuments.length} documents. Bạn có thể chọn files để upload.`);
+          
+          // Enable file selection after a short delay to show success message
+          setTimeout(() => {
+            setFileSelectionEnabled(true);
+            setStatus('info', 'Sẵn sàng upload tài liệu');
+          }, 1500);
+        } else {
+          setStatus('warning', 'Không thể tải danh sách documents. Vẫn có thể upload nhưng không kiểm tra trùng lặp.');
+          setFileSelectionEnabled(true);
         }
       } catch (error) {
         console.error('Failed to load existing documents:', error);
+        setStatus('warning', 'Không thể tải danh sách documents. Vẫn có thể upload nhưng không kiểm tra trùng lặp.');
+        setFileSelectionEnabled(true);
       }
     }
+    
+    // Start loading documents on page load
     loadExistingDocuments();
 
     // Get the primary file name from a document (for duplicate checking)
@@ -1077,6 +1141,10 @@
     
     // Drop zone events
     dropZone.addEventListener('click', async () => {
+      if (isLoadingDocuments) {
+        setStatus('info', '⏳ Vui lòng đợi tải xong danh sách documents...');
+        return;
+      }
       const files = await window.electronAPI.selectFiles();
       if (files && files.length > 0) {
         addFiles(files);
@@ -1084,6 +1152,10 @@
     });
 
     dropZone.addEventListener('dragover', (e) => {
+      if (isLoadingDocuments) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       dropZone.classList.add('drag-over');
     });
@@ -1095,6 +1167,11 @@
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
+      
+      if (isLoadingDocuments) {
+        setStatus('info', '⏳ Vui lòng đợi tải xong danh sách documents...');
+        return;
+      }
 
       const files = Array.from(e.dataTransfer.files).map(f => f.path);
       addFiles(files);
@@ -1102,6 +1179,10 @@
 
     // Folder zone events
     folderZone.addEventListener('click', async () => {
+      if (isLoadingDocuments) {
+        setStatus('info', '⏳ Vui lòng đợi tải xong danh sách documents...');
+        return;
+      }
       const folderPath = await window.electronAPI.selectFolder();
       if (folderPath) {
         setStatus('info', 'Đang quét folder...');
@@ -1300,10 +1381,14 @@
     }
     
     // Update file status
-    function updateFileStatus(index, status) {
+    function updateFileStatus(index, status, errorMessage = null) {
       if (selectedFiles[index]) {
         selectedFiles[index].status = status;
+        if (errorMessage && status === 'error') {
+          selectedFiles[index].errorMessage = errorMessage;
+        }
         renderFileList();
+        updateExportErrorsButton();
       }
     }
     
@@ -1406,7 +1491,7 @@
             completed++;
           } catch (error) {
             console.error(`Error processing ${file.name}:`, error);
-            updateFileStatus(originalIndex, 'error');
+            updateFileStatus(originalIndex, 'error', error.message);
             errors++;
             continue;
           }
@@ -1568,7 +1653,7 @@
             }
           } catch (error) {
             console.error(`Error uploading ${file.name}:`, error);
-            updateFileStatus(originalIndex, 'error');
+            updateFileStatus(originalIndex, 'error', error.message);
             uploadResults.push({ fileName: file.name, success: false, error: error.message });
             errors++;
           }
@@ -1581,12 +1666,16 @@
 
         if (errors > 0) {
           setStatus('error', `⚠️ Xử lý xong: ${completed - errors} thành công, ${errors} lỗi`);
+          // Show export errors button
+          btnExportErrors.style.display = 'block';
         } else {
           let message = `✅ Upload thành công ${completed} tài liệu!`;
           if (overwriteCount > 0) {
             message += ` (${overwriteCount} ghi đè)`;
           }
           setStatus('success', message);
+          // Hide export errors button
+          btnExportErrors.style.display = 'none';
         }
 
         setTimeout(() => {
@@ -1598,6 +1687,7 @@
             existingDuplicates = [];
             duplicateWarning.style.display = 'none';
             renderFileList();
+            btnExportErrors.style.display = 'none';
 
             // Reload existing documents for future duplicate checks
             loadExistingDocuments();
@@ -1617,6 +1707,73 @@
         btnUpload.disabled = false;
       }
     });
+    
+    // Export errors button click handler
+    btnExportErrors.addEventListener('click', async () => {
+      try {
+        // Collect all error files
+        const errorFiles = selectedFiles.filter(file => file.status === 'error');
+        
+        if (errorFiles.length === 0) {
+          setStatus('info', 'Không có file nào bị lỗi');
+          return;
+        }
+        
+        // Generate content
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const fileName = `danh_sach_file_loi_${timestamp}.txt`;
+        
+        let content = `DANH SÁCH FILE LỖI - ${new Date().toLocaleString('vi-VN')}\n`;
+        content += `==========================================\n\n`;
+        content += `Tổng số file lỗi: ${errorFiles.length}\n\n`;
+        
+        errorFiles.forEach((file, index) => {
+          content += `${index + 1}. Tên file: ${file.name}\n`;
+          content += `   Đường dẫn: ${file.path}\n`;
+          if (file.relativePath) {
+            content += `   Đường dẫn tương đối: ${file.relativePath}\n`;
+          }
+          if (file.errorMessage) {
+            content += `   Lỗi: ${file.errorMessage}\n`;
+          }
+          content += `\n`;
+        });
+        
+        content += `\n==========================================\n`;
+        content += `Lưu ý: Các file này có thể upload lại sau khi sửa lỗi.\n`;
+        
+        // Save file
+        const result = await window.electronAPI.saveTextFile(content, fileName);
+        
+        if (result.success) {
+          setStatus('success', `✅ Đã export danh sách ${errorFiles.length} file lỗi: ${result.filePath}`);
+          
+          // Optionally open the file location
+          setTimeout(async () => {
+            try {
+              const lastSlash = Math.max(result.filePath.lastIndexOf('\\'), result.filePath.lastIndexOf('/'));
+              if (lastSlash > 0) {
+                const folderPath = result.filePath.substring(0, lastSlash);
+                await window.electronAPI.openFolder(folderPath);
+              }
+            } catch (e) {
+              // Ignore if can't open folder
+            }
+          }, 1000);
+        } else {
+          setStatus('error', `Lỗi khi export: ${result.error}`);
+        }
+      } catch (error) {
+        console.error('Export errors error:', error);
+        setStatus('error', 'Lỗi khi export danh sách file lỗi: ' + error.message);
+      }
+    });
+    
+    // Function to update export button visibility
+    function updateExportErrorsButton() {
+      const hasErrors = selectedFiles.some(file => file.status === 'error');
+      btnExportErrors.style.display = hasErrors ? 'block' : 'none';
+    }
     
     // Initial render
     renderFileList();

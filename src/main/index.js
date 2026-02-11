@@ -50,7 +50,7 @@ ipcMain.handle('select-files', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openFile', 'multiSelections'],
     filters: [
-      { name: 'Documents', extensions: ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'pdf'] },
+      { name: 'Documents', extensions: ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'pdf', 'vsdx'] },
       { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'bmp'] },
       { name: 'All Files', extensions: ['*'] }
     ]
@@ -68,7 +68,7 @@ ipcMain.handle('select-folder', async () => {
 
 // Quét tất cả files trong folder (recursive)
 ipcMain.handle('scan-folder', async (event, folderPath) => {
-  const supportedExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp', '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.bmp'];
+  const supportedExtensions = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp', '.pdf', '.vsdx', '.png', '.jpg', '.jpeg', '.gif', '.bmp'];
   const files = [];
 
   function scanDirectory(dirPath) {
@@ -392,6 +392,39 @@ ipcMain.handle('save-file-to-local', async (event, sourcePath, fileName) => {
       success: true, 
       localPath: destPath,
       directory: documentsPath
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Save text content to file
+ipcMain.handle('save-text-file', async (event, content, fileName) => {
+  try {
+    const { dialog } = require('electron');
+    const os = require('os');
+    
+    // Show save dialog
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Lưu danh sách file lỗi',
+      defaultPath: fileName || path.join(os.homedir(), 'Documents', 'danh_sach_file_loi.txt'),
+      filters: [
+        { name: 'Text Files', extensions: ['txt'] },
+        { name: 'CSV Files', extensions: ['csv'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    
+    if (result.canceled) {
+      return { success: false, error: 'User cancelled' };
+    }
+    
+    // Write file
+    fs.writeFileSync(result.filePath, content, 'utf8');
+    
+    return { 
+      success: true, 
+      filePath: result.filePath
     };
   } catch (error) {
     return { success: false, error: error.message };

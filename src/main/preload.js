@@ -76,5 +76,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFileToLocal: (sourcePath, fileName) => ipcRenderer.invoke('save-file-to-local', sourcePath, fileName),
   
   // Open folder
-  openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath)
+  openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
+  
+  // Save text file
+  saveTextFile: (content, fileName) => ipcRenderer.invoke('save-text-file', content, fileName)
 });

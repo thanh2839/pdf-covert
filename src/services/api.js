@@ -213,15 +213,112 @@ const documentService = {
   },
 
   /**
-   * Get all documents (for duplicate check, no pagination)
+   * Get all documents (for duplicate check, with pagination to load all)
+   * Backend uses page and page_size for pagination
    */
   async getAllDocuments(token) {
-    const requestData = {
+    const allDocuments = []
+    let currentPage = 1
+    const pageSize = 100 // Load 100 documents per page
+    let totalPages = null
+    let totalCount = null
+
+    // Load first page to get total_count and total_pages
+    const firstRequest = {
       request_type: 'get_mentacare_documents',
       jwt_token: token,
-      amount: 10000 // Get all documents
+      page: 1,
+      page_size: pageSize
     }
-    return await postRequest(requestData)
+    
+    const firstResponse = await postRequest(firstRequest)
+    
+    // Parse response - could be wrapped in body if Lambda response
+    let responseData = firstResponse
+    if (firstResponse.body) {
+      try {
+        responseData = typeof firstResponse.body === 'string' 
+          ? JSON.parse(firstResponse.body) 
+          : firstResponse.body
+      } catch (e) {
+        responseData = firstResponse
+      }
+    }
+    
+    if (responseData && responseData.documents && Array.isArray(responseData.documents)) {
+      allDocuments.push(...responseData.documents)
+      totalCount = responseData.total_count || responseData.documents.length
+      totalPages = responseData.total_pages || Math.ceil(totalCount / pageSize)
+      
+      console.log(`Loading all documents: ${totalCount} total, ${totalPages} pages`)
+      
+      // Load remaining pages
+      for (currentPage = 2; currentPage <= totalPages; currentPage++) {
+        const requestData = {
+          request_type: 'get_mentacare_documents',
+          jwt_token: token,
+          page: currentPage,
+          page_size: pageSize
+        }
+        
+        const response = await postRequest(requestData)
+        
+        // Parse response
+        let pageData = response
+        if (response.body) {
+          try {
+            pageData = typeof response.body === 'string' 
+              ? JSON.parse(response.body) 
+              : response.body
+          } catch (e) {
+            pageData = response
+          }
+        }
+        
+        if (pageData && pageData.documents && Array.isArray(pageData.documents)) {
+          if (pageData.documents.length > 0) {
+            allDocuments.push(...pageData.documents)
+            console.log(`Loaded page ${currentPage}/${totalPages}: ${pageData.documents.length} documents`)
+          } else {
+            // No more documents
+            break
+          }
+        } else {
+          // Unexpected response format, stop loading
+          console.warn(`Unexpected response format on page ${currentPage}, stopping pagination`)
+          break
+        }
+      }
+    } else {
+      // Fallback: try old format with amount and pagging for backward compatibility
+      console.warn('Response format not recognized, trying old format...')
+      const fallbackRequest = {
+        request_type: 'get_mentacare_documents',
+        jwt_token: token,
+        amount: 10000
+      }
+      const fallbackResponse = await postRequest(fallbackRequest)
+      let fallbackData = fallbackResponse
+      if (fallbackResponse.body) {
+        try {
+          fallbackData = typeof fallbackResponse.body === 'string' 
+            ? JSON.parse(fallbackResponse.body) 
+            : fallbackResponse.body
+        } catch (e) {
+          fallbackData = fallbackResponse
+        }
+      }
+      if (fallbackData && fallbackData.documents) {
+        allDocuments.push(...(Array.isArray(fallbackData.documents) ? fallbackData.documents : []))
+      }
+    }
+
+    console.log(`Loaded ${allDocuments.length} documents total for duplicate check`)
+    
+    return {
+      documents: allDocuments,
+      total_count: allDocuments.length
+    }
   },
 
   /**
