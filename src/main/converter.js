@@ -1,27 +1,49 @@
-const { spawn, execSync } = require('child_process');
+const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { app } = require('electron');
 
+const EXCEL_EXTENSIONS = ['.xlsx', '.xls', '.xlsm', '.xlsb'];
+
+function isExcelFile(filePath) {
+  return EXCEL_EXTENSIONS.includes(path.extname(filePath).toLowerCase());
+}
+
 /**
- * Kill zombie soffice processes + toàn bộ process tree
- * Trên Windows khi exec timeout chỉ kill shell, soffice.bin vẫn sống
- * → phải kill bằng wmic để dọn hết
+ * Preprocess Excel: đặt tất cả sheets về fit-to-1-page trước khi convert sang PDF
+ * Tránh trường hợp sheet bị cắt thành nhiều trang PDF
+ * @returns {string|null} đường dẫn file tạm đã xử lý, hoặc null nếu thất bại
  */
-function killAllSoffice() {
-  if (process.platform === 'win32') {
-    // PowerShell kill đáng tin cậy hơn wmic/taskkill trên Windows
-    try {
-      execSync('powershell -Command "Get-Process soffice* -ErrorAction SilentlyContinue | Stop-Process -Force"', { stdio: 'ignore', timeout: 10000 });
-    } catch (e) {}
-    // Fallback: taskkill
-    try { execSync('taskkill /F /IM soffice.bin /T', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
-    try { execSync('taskkill /F /IM soffice.exe /T', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
-    try { execSync('taskkill /F /IM soffice.com /T', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
-  } else {
-    try { execSync('pkill -9 -f soffice', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
+function preprocessExcelFitToPage(inputFile) {
+  let XLSX;
+  try {
+    XLSX = require('xlsx');
+  } catch (e) {
+    console.warn('xlsx package not available, skipping Excel fit-to-page preprocessing:', e.message);
+    return null;
   }
+
+  const workbook = XLSX.readFile(inputFile);
+
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    sheet['!pageSetup'] = {
+      ...(sheet['!pageSetup'] || {}),
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 1,
+    };
+  }
+
+  const tempDir = path.join(os.tmpdir(), 'pdf-converter-excel-temp', `${Date.now()}`);
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  // Giữ nguyên tên gốc để LibreOffice tạo PDF cùng tên
+  const tempFile = path.join(tempDir, `${path.basename(inputFile, path.extname(inputFile))}.xlsx`);
+  XLSX.writeFile(workbook, tempFile, { bookType: 'xlsx' });
+  console.log(`Preprocessed Excel with fit-to-page: ${tempFile}`);
+  return tempFile;
 }
 
 /**
@@ -40,19 +62,33 @@ function getLibreOfficePath() {
   // Đường dẫn development
   const devPath = path.join(__dirname, '../../libreoffice');
 
-  // Windows - dùng soffice.exe (exit ngay, soffice.bin chạy nền → poll chờ PDF)
+  console.log(`[LibreOffice] getLibreOfficePath() platform=${platform}`);
+  console.log(`[LibreOffice] resourcesPath=${resourcesPath}`);
+  console.log(`[LibreOffice] bundledPath=${bundledPath}`);
+  console.log(`[LibreOffice] devPath=${devPath}`);
+
+  // Windows
   if (platform === 'win32') {
     const possiblePaths = [
+      path.join(bundledPath, 'App/libreoffice/program/soffice.com'),
       path.join(bundledPath, 'App/libreoffice/program/soffice.exe'),
+      path.join(bundledPath, 'program/soffice.com'),
       path.join(bundledPath, 'program/soffice.exe'),
+      path.join(devPath, 'App/libreoffice/program/soffice.com'),
       path.join(devPath, 'App/libreoffice/program/soffice.exe'),
+      path.join(devPath, 'program/soffice.com'),
       path.join(devPath, 'program/soffice.exe'),
+      'C:\\Program Files\\LibreOffice\\program\\soffice.com',
       'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+      'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.com',
       'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
     ];
 
+    console.log('[LibreOffice] Checking paths:');
     for (const p of possiblePaths) {
-      if (fs.existsSync(p)) {
+      const exists = fs.existsSync(p);
+      console.log(`[LibreOffice]   ${exists ? '✓' : '✗'} ${p}`);
+      if (exists) {
         return p;
       }
     }
@@ -111,100 +147,143 @@ function convertToPDF(inputFile, outputDir = null) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
+    console.log(`[LibreOffice] Input: ${inputFile}`);
+    console.log(`[LibreOffice] Output dir: ${outputDir}`);
+
+    // Excel: re-export qua SheetJS để strip styles/VBA phức tạp mà portable LibreOffice không handle được
+    // Đồng thời set fit-to-1-page để mỗi sheet = 1 trang PDF
+    let fileToConvert = inputFile;
+    let tempExcelFile = null;
+    if (isExcelFile(inputFile)) {
+      console.log(`[LibreOffice] Passing Excel file directly to preserve formatting: ${inputFile}`);
+      // NOTE: We intentionally skip preprocessExcelFitToPage (SheetJS) here 
+      // because the free version of SheetJS drops all styling, borders, colors, and layout properties.
+      // Passing it directly allows LibreOffice to maintain the visual fidelity of the original Excel sheet.
+    }
+
+    // Copy file sang tên ASCII tạm nếu tên gốc chứa non-ASCII (tiếng Việt, ký tự đặc biệt)
+    // LibreOffice trên Windows đôi khi không handle Unicode path → PDF không được tạo
+    let tempAsciiFile = null;
+    const hasNonAscii = /[^\x00-\x7F]/.test(fileToConvert);
+    console.log(`[LibreOffice] filename hasNonAscii=${hasNonAscii}: "${path.basename(fileToConvert)}"`);
+    if (hasNonAscii) {
+      try {
+        const asciiTempDir = path.join(os.tmpdir(), 'pdf-converter-ascii-temp');
+        if (!fs.existsSync(asciiTempDir)) fs.mkdirSync(asciiTempDir, { recursive: true });
+        const safeBasename = `convert_${Date.now()}${path.extname(fileToConvert)}`;
+        const asciiTempPath = path.join(asciiTempDir, safeBasename);
+        fs.copyFileSync(fileToConvert, asciiTempPath);
+        tempAsciiFile = asciiTempPath;
+        fileToConvert = asciiTempPath;
+        console.log(`[LibreOffice] Copied non-ASCII file to ASCII temp: ${asciiTempPath}`);
+      } catch (e) {
+        console.warn('[LibreOffice] Failed to copy to ASCII temp path, using original:', e.message);
+      }
+    }
+
+    // Lấy đường dẫn LibreOffice
     let soffice;
     try {
       soffice = getLibreOfficePath();
+      console.log(`[LibreOffice] Using: ${soffice}`);
     } catch (error) {
+      console.error('[LibreOffice] Not found:', error.message);
+      if (tempExcelFile) try { fs.unlinkSync(tempExcelFile); } catch (e) {}
+      if (tempAsciiFile) try { fs.unlinkSync(tempAsciiFile); } catch (e) {}
       return reject(error);
     }
 
-    // Kill zombie soffice + đợi thoát + xóa locks
-    killAllSoffice();
-    try { execSync('powershell -Command "Start-Sleep -Milliseconds 1500"', { stdio: 'ignore', timeout: 5000 }); } catch (e) {}
-
+    // PDF output path
     const inputBasename = path.basename(inputFile, path.extname(inputFile));
+    const convertBasename = path.basename(fileToConvert, path.extname(fileToConvert));
     const pdfPath = path.join(outputDir, `${inputBasename}.pdf`);
+    const convertPdfPath = path.join(outputDir, `${convertBasename}.pdf`);
+    console.log(`[LibreOffice] expected PDF (final): ${pdfPath}`);
+    if (tempAsciiFile) console.log(`[LibreOffice] expected PDF (from soffice): ${convertPdfPath}`);
 
-    // Dọn file cũ + lock files
-    try { if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath); } catch (e) {}
-    try { fs.unlinkSync(path.join(outputDir, `.~lock.${inputBasename}.pdf#`)); } catch (e) {}
-    try { fs.unlinkSync(path.join(path.dirname(inputFile), `.~lock.${path.basename(inputFile)}#`)); } catch (e) {}
-    const sofficePath = path.dirname(soffice);
-    const profileLock = path.join(path.resolve(sofficePath, '../../../Data/settings'), '.lock');
-    try { if (fs.existsSync(profileLock)) fs.unlinkSync(profileLock); } catch (e) {}
-
-    const args = [
-      '--headless', '--norestore', '--nofirststartwizard', '--nologo',
-      '--convert-to', 'pdf',
-      '--outdir', outputDir,
-      inputFile
-    ];
-    console.log('Converting with command:', soffice, args.join(' '));
-
-    let settled = false;
-    const child = spawn(soffice, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true
-    });
-
-    let stdoutData = '';
-    let stderrData = '';
-    child.stdout.on('data', (d) => { stdoutData += d.toString(); });
-    child.stderr.on('data', (d) => { stderrData += d.toString(); });
-
-    function finish(success, result) {
-      if (settled) return;
-      settled = true;
-      clearInterval(pollTimer);
-      clearTimeout(timeoutTimer);
-      if (stdoutData) console.log('LibreOffice stdout:', stdoutData.trim());
-      if (stderrData) console.error('LibreOffice stderr:', stderrData.trim());
-      if (success) {
-        console.log('Conversion successful:', result);
-        resolve(result);
-      } else {
-        // Chỉ kill khi thất bại - KHÔNG kill khi thành công (soffice.bin có thể đang dọn dẹp)
-        try { child.kill(); } catch (e) {}
-        killAllSoffice();
-        reject(new Error(result));
-      }
-    }
-
-    // Poll PDF song song - soffice.exe exit ngay, soffice.bin chạy nền convert
-    // → poll là cách duy nhất để biết khi nào xong
-    const POLL_INTERVAL = 1000;
-    const pollTimer = setInterval(() => {
-      if (settled) return;
-      if (fs.existsSync(pdfPath)) {
-        try {
-          const size1 = fs.statSync(pdfPath).size;
-          if (size1 > 0) {
-            setTimeout(() => {
-              if (settled) return;
-              try {
-                const size2 = fs.statSync(pdfPath).size;
-                if (size2 > 0 && size1 === size2) {
-                  finish(true, pdfPath);
-                }
-              } catch (e) {}
-            }, 500);
+    // Chờ PDF xuất hiện (soffice.exe có thể exit sớm trước khi soffice.bin convert xong)
+    const waitForPdf = (targetPath, maxWait = 30000) => {
+      return new Promise((res) => {
+        if (fs.existsSync(targetPath)) return res(true);
+        let waited = 0;
+        const interval = setInterval(() => {
+          waited += 500;
+          if (fs.existsSync(targetPath)) {
+            clearInterval(interval);
+            res(true);
+          } else if (waited >= maxWait) {
+            clearInterval(interval);
+            res(false);
           }
-        } catch (e) {}
+        }, 500);
+      });
+    };
+
+    const runConversion = (srcFile, onDone) => {
+      const srcBasename = path.basename(srcFile, path.extname(srcFile));
+      const srcPdfPath = path.join(outputDir, `${srcBasename}.pdf`);
+      
+      let command;
+      if (isExcelFile(inputFile)) {
+        // Use Calc PDF Export with SinglePageSheets so 1 Sheet = 1 PDF Page (dynamically sized)
+        command = `"${soffice}" --headless --convert-to "pdf:calc_pdf_Export:{\\"SinglePageSheets\\":{\\"type\\":\\"boolean\\",\\"value\\":\\"true\\"}}" --outdir "${outputDir}" "${srcFile}"`;
+      } else {
+        command = `"${soffice}" --headless --convert-to pdf --outdir "${outputDir}" "${srcFile}"`;
       }
-    }, POLL_INTERVAL);
+      
+      console.log(`[LibreOffice] Command: ${command}`);
+      exec(command, { timeout: 300000 }, async (error, stdout, stderr) => {
+        let loStdout = stdout ? stdout.trim() : '';
+        let loStderr = stderr ? stderr.trim() : '';
+        if (loStdout) console.log('[LibreOffice] stdout:', loStdout);
+        if (loStderr) console.error('[LibreOffice] stderr:', loStderr);
 
-    // Timeout tổng: 3 phút
-    const timeoutTimer = setTimeout(() => {
-      finish(false, 'Conversion timeout after 3 minutes');
-    }, 180000);
+        // soffice.exe trên Windows có thể exit sớm → poll chờ PDF
+        // soffice.com có thể exit 0 nhưng in lỗi ra stdout
+        if (!error && !fs.existsSync(srcPdfPath)) {
+          if (loStdout.includes('Error:')) {
+             error = new Error(`LibreOffice Error: ${loStdout}`);
+          } else {
+             console.log('[LibreOffice] PDF not found yet, waiting for soffice.bin to finish...');
+             await waitForPdf(srcPdfPath);
+          }
+        }
 
-    child.on('error', (err) => {
-      finish(false, `Failed to start LibreOffice: ${err.message}`);
-    });
+        onDone(error, loStderr || loStdout, srcPdfPath);
+      });
+    };
 
-    // soffice.exe exit ngay → KHÔNG fail ở đây, để poll tiếp tục chờ PDF từ soffice.bin
-    child.on('close', (code) => {
-      console.log(`soffice.exe exited with code ${code}, soffice.bin converting in background...`);
+    const cleanup = () => {
+      if (tempExcelFile) try { fs.unlinkSync(tempExcelFile); } catch (e) {}
+      if (tempAsciiFile) try { fs.unlinkSync(tempAsciiFile); } catch (e) {}
+    };
+
+    runConversion(fileToConvert, (error, stdinfo, srcPdfPath) => {
+      cleanup();
+      if (error) {
+        console.error('[LibreOffice] exec error:', error.message);
+        return reject(new Error(`Conversion failed: ${error.message}`));
+      }
+      
+      if (tempAsciiFile && srcPdfPath !== pdfPath && fs.existsSync(srcPdfPath)) {
+        try {
+          fs.renameSync(srcPdfPath, pdfPath);
+          console.log(`[LibreOffice] Renamed: ${srcPdfPath} → ${pdfPath}`);
+        } catch (e) {
+          console.warn('[LibreOffice] Rename failed:', e.message);
+        }
+      }
+
+      if (fs.existsSync(pdfPath)) {
+        console.log('[LibreOffice] Conversion successful:', pdfPath);
+        resolve(pdfPath);
+      } else {
+        console.error(`[LibreOffice] PDF not found at: ${pdfPath}`);
+        let errMsg = 'PDF file was not created. File may be unsupported or too complex for LibreOffice.';
+        if (error) { errMsg += ` ${error.message}`; }
+        else if (stdinfo) { errMsg += ` LibreOffice info: ${stdinfo}`; }
+        reject(new Error(errMsg));
+      }
     });
   });
 }
@@ -279,16 +358,13 @@ async function extractThumbnailsFromPDF(pdfFile, outputDir, maxPages = 5, dpi = 
  * @returns {Promise<string[]>} - Mảng đường dẫn các file PNG đã export (tối đa 5 trang)
  */
 async function extractThumbnailsFromFile(inputFile, outputDir = null, maxPages = 5) {
-  // Kiểm tra file input tồn tại
   if (!fs.existsSync(inputFile)) {
     throw new Error(`Input file not found: ${inputFile}`);
   }
 
-  // Tạo output directory
   if (!outputDir) {
     outputDir = path.join(os.tmpdir(), 'pdf-thumbnails');
   }
-
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
@@ -296,13 +372,13 @@ async function extractThumbnailsFromFile(inputFile, outputDir = null, maxPages =
   let pdfFile = inputFile;
   const ext = path.extname(inputFile).toLowerCase();
 
-  // File không phải PDF → convert sang PDF trước
+  // File khác không phải PDF → convert sang PDF trước
   if (ext !== '.pdf') {
     console.log(`Converting ${inputFile} to PDF before extracting thumbnails...`);
     pdfFile = await convertToPDF(inputFile);
   }
 
-  // Luôn dùng MuPDF để extract thumbnails từ PDF
+  // Luôn dùng MuPDF để extract thumbnails từ PDF (PDF này đã được cấu hình 1 sheet = 1 PDF Page đối với Excel)
   return extractThumbnailsFromPDF(pdfFile, outputDir, maxPages);
 }
 
