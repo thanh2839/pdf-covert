@@ -223,16 +223,23 @@ function convertToPDF(inputFile, outputDir = null) {
       const srcBasename = path.basename(srcFile, path.extname(srcFile));
       const srcPdfPath = path.join(outputDir, `${srcBasename}.pdf`);
       
-      let command;
-      if (isExcelFile(inputFile)) {
-        // Use Calc PDF Export with SinglePageSheets so 1 Sheet = 1 PDF Page (dynamically sized)
-        command = `"${soffice}" --headless --convert-to "pdf:calc_pdf_Export:{\\"SinglePageSheets\\":{\\"type\\":\\"boolean\\",\\"value\\":\\"true\\"}}" --outdir "${outputDir}" "${srcFile}"`;
-      } else {
-        command = `"${soffice}" --headless --convert-to pdf --outdir "${outputDir}" "${srcFile}"`;
-      }
+      const { execFile } = require('child_process');
+      const os = require('os');
+      const tempProfile = path.join(os.tmpdir(), 'pdf-converter-lo-profile').replace(/\\/g, '/');
+      const profileUrl = `file:///${tempProfile}`;
       
-      console.log(`[LibreOffice] Command: ${command}`);
-      exec(command, { timeout: 300000 }, async (error, stdout, stderr) => {
+      const args = [`-env:UserInstallation=${profileUrl}`, '--headless', '--convert-to'];
+      
+      if (isExcelFile(inputFile)) {
+        // Truyền cấu hình dưới dạng tham số nguyên bản để không bị CMD làm hỏng ngoặc kép
+        args.push('pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}');
+      } else {
+        args.push('pdf');
+      }
+      args.push('--outdir', outputDir, srcFile);
+      
+      console.log(`[LibreOffice] Executing: "${soffice}" ${args.join(' ')}`);
+      execFile(soffice, args, { timeout: 300000 }, async (error, stdout, stderr) => {
         let loStdout = stdout ? stdout.trim() : '';
         let loStderr = stderr ? stderr.trim() : '';
         if (loStdout) console.log('[LibreOffice] stdout:', loStdout);
@@ -262,7 +269,9 @@ function convertToPDF(inputFile, outputDir = null) {
       cleanup();
       if (error) {
         console.error('[LibreOffice] exec error:', error.message);
-        return reject(new Error(`Conversion failed: ${error.message}`));
+        let errorMsg = `Conversion failed: ${error.message}`;
+        if (stdinfo) errorMsg += `\nLibreOffice Output: ${stdinfo}`;
+        return reject(new Error(errorMsg));
       }
       
       if (tempAsciiFile && srcPdfPath !== pdfPath && fs.existsSync(srcPdfPath)) {
